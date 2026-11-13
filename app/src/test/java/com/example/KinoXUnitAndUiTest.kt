@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -25,9 +26,11 @@ import com.example.player.KinoXPlayerHolder
 import com.example.ui.library.LibraryScreen
 import com.example.ui.library.LibraryViewModel
 import com.example.ui.theme.KinoXTheme
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -63,7 +66,11 @@ class KinoXUnitAndUiTest {
         assertEquals(SleepTimerOption.MIN_15, KinoXPlayerHolder.sleepTimer.value.option)
         assertEquals(900L, KinoXPlayerHolder.sleepTimer.value.remainingSeconds)
 
-        val closeDeferred = async { KinoXPlayerHolder.sleepAutoCloseEvents.first() }
+        val closeDeferred = async(start = CoroutineStart.UNDISPATCHED) {
+            withTimeout(5_000L) {
+                KinoXPlayerHolder.sleepAutoCloseEvents.first()
+            }
+        }
         KinoXPlayerHolder.triggerSleepAutoClose()
         closeDeferred.await()
 
@@ -168,6 +175,10 @@ class KinoXUnitAndUiTest {
             }
         }
 
+        composeTestRule.waitUntil(timeoutMillis = 8_000L) {
+            composeTestRule.onAllNodesWithTag("link_folder_button").fetchSemanticsNodes().isNotEmpty()
+        }
+
         composeTestRule.onNodeWithTag("link_folder_button").assertIsDisplayed()
         composeTestRule.onNodeWithTag("pick_video_button").assertIsDisplayed()
         composeTestRule.onNodeWithTag("nav_tab_folders").assertIsDisplayed()
@@ -197,11 +208,15 @@ class KinoXUnitAndUiTest {
             }
         }
 
+        composeTestRule.waitUntil(timeoutMillis = 8_000L) {
+            composeTestRule.onAllNodesWithTag("nav_tab_settings").fetchSemanticsNodes().isNotEmpty()
+        }
+
         composeTestRule.onNodeWithTag("nav_tab_settings").performClick()
         composeTestRule.onNodeWithText("Customize KinoX").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("settings_decoder_section").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("setting_decoder_hw_plus").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithTag("setting_aspect_ratio_16_9").performScrollTo().performClick()
-        composeTestRule.onNodeWithTag("settings_gestures_section").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("setting_toggle_brightness_gesture").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithTag("settings_subtitle_preview").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithTag("reset_settings_button").performScrollTo().performClick()
         composeTestRule.onNodeWithTag("clear_history_button").performScrollTo().assertIsDisplayed()
