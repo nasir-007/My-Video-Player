@@ -1,0 +1,6 @@
+{
+  "name": "KinoX",
+  "description": "Local Android video player with gesture controls, embedded & external SRT/VTT subtitles, HW/HW+/SW decoders, background MediaSessionService playback, and battery optimization profiles.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
