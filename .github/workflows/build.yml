@@ -24,6 +24,11 @@ jobs:
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Create local.properties for Gradle
+        run: echo "sdk.dir=$ANDROID_HOME" > local.properties
 
       - name: Install Android SDK platforms & accept licenses
         run: |
@@ -53,13 +58,13 @@ jobs:
       # MissingGoogleServicesStrategy.WARN and googleServices.missing.passthrough=true.
       - name: Run pure-JVM unit tests
         run: >
-          gradle :app:testDebugUnitTest
+          ./gradlew :app:testDebugUnitTest
           --tests "com.example.ExampleUnitTest"
           --tests "com.example.SubtitleParserTest"
           --no-daemon
 
       - name: Build Debug APK
-        run: gradle :app:assembleDebug --no-daemon
+        run: ./gradlew :app:assembleDebug --no-daemon
 
       - name: Upload KinoX APK
         uses: actions/upload-artifact@v4
