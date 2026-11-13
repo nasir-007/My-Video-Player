@@ -28,7 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AspectRatio
 import androidx.compose.material.icons.filled.Audiotrack
-import androidx.compose.material.icons.filled.BatterySaver
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.FastForward
 import androidx.compose.material.icons.filled.FastRewind
 import androidx.compose.material.icons.filled.Forward10
@@ -79,8 +79,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
 import com.example.data.model.DecoderMode
-import com.example.data.model.PowerProfile
-import com.example.data.model.SleepTimerOption
 import com.example.data.model.SubtitleStylePrefs
 import com.example.ui.common.formatDuration
 import com.example.ui.common.formatSignedDelta
@@ -155,7 +153,7 @@ fun PlayerHudOverlays(
     onOpenSubtitles: () -> Unit,
     onOpenAudioSpeed: () -> Unit,
     onOpenDecoderInfo: () -> Unit,
-    onOpenPowerBattery: () -> Unit,
+    onOpenSleepTimer: () -> Unit,
     onEnterPip: () -> Unit,
     onToggleLock: () -> Unit,
     onCycleAspectRatio: () -> Unit,
@@ -344,19 +342,15 @@ fun PlayerHudOverlays(
                     }
 
                     IconButton(
-                        onClick = onOpenPowerBattery,
+                        onClick = onOpenSleepTimer,
                         modifier = Modifier
                             .minimumInteractiveComponentSize()
-                            .testTag("player_power_button")
+                            .testTag("player_sleep_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Filled.BatterySaver,
+                            imageVector = Icons.Filled.Bedtime,
                             contentDescription = stringResource(R.string.cd_sleep_timer),
-                            tint = if (state.powerProfile == PowerProfile.ECO || state.sleepTimerOption != SleepTimerOption.OFF) {
-                                MintSuccess
-                            } else {
-                                Color.White
-                            }
+                            tint = if (state.sleepTimer.isActive) MintSuccess else Color.White
                         )
                     }
 
@@ -416,13 +410,14 @@ fun PlayerHudOverlays(
                 }
 
                 // Center Transport Cluster
+                val skipDeltaMs = state.seekStepSeconds.coerceIn(5, 60) * 1000L
                 Row(
                     modifier = Modifier.align(Alignment.Center),
                     horizontalArrangement = Arrangement.spacedBy(28.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Surface(
-                        onClick = { onSeekBy(-10_000L) },
+                        onClick = { onSeekBy(-skipDeltaMs) },
                         shape = CircleShape,
                         color = GlassOverlay,
                         border = BorderStroke(1.dp, GlassBorder),
@@ -461,7 +456,7 @@ fun PlayerHudOverlays(
                     }
 
                     Surface(
-                        onClick = { onSeekBy(10_000L) },
+                        onClick = { onSeekBy(skipDeltaMs) },
                         shape = CircleShape,
                         color = GlassOverlay,
                         border = BorderStroke(1.dp, GlassBorder),
@@ -588,20 +583,15 @@ fun PlayerHudOverlays(
                                 }
                             }
 
-                            if (state.sleepTimerOption != SleepTimerOption.OFF) {
+                            if (state.sleepTimer.isActive) {
                                 Surface(
-                                    onClick = onOpenPowerBattery,
+                                    onClick = onOpenSleepTimer,
                                     shape = RoundedCornerShape(50),
                                     color = Color(0xFF0E2F26),
                                     border = BorderStroke(1.dp, MintSuccess.copy(alpha = 0.6f))
                                 ) {
-                                    val timerText = if (state.sleepTimerOption == SleepTimerOption.END_OF_VIDEO) {
-                                        "END"
-                                    } else {
-                                        formatDuration(state.sleepRemainingSeconds * 1000L)
-                                    }
                                     Text(
-                                        text = timerText,
+                                        text = state.sleepTimer.badgeLabel,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontFamily = JetBrainsMonoFontFamily,
                                         color = MintSuccess,

@@ -30,6 +30,7 @@ object DecoderFactory {
                 factory
                     .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF)
                     .setEnableDecoderFallback(false)
+                    .forceEnableMediaCodecAsynchronousQueueing()
             }
             DecoderMode.HW_PLUS -> {
                 factory

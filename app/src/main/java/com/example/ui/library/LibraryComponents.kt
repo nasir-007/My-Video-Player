@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,13 +21,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BatteryChargingFull
-import androidx.compose.material.icons.filled.BatterySaver
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Headphones
@@ -34,20 +35,21 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlayCircle
 import androidx.compose.material.icons.filled.Subtitles
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.VideoFile
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -77,16 +79,16 @@ import com.example.R
 import com.example.data.model.DecoderMode
 import com.example.data.model.FolderItem
 import com.example.data.model.PlaybackPrefs
-import com.example.data.model.PowerProfile
+import com.example.data.model.SleepTimerOption
 import com.example.data.model.VideoItem
-import com.example.player.BatteryStatusSnapshot
 import com.example.player.NowPlayingSnapshot
+import com.example.player.SleepTimerState
 import com.example.ui.common.formatDuration
 import com.example.ui.common.formatFileSize
 import com.example.ui.common.formatResolutionTag
-import com.example.ui.theme.AmberContainer
 import com.example.ui.theme.AmberWarm
 import com.example.ui.theme.CardSlate
+import com.example.ui.theme.DividerSubtle
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.ElevatedSlate
 import com.example.ui.theme.GlassBorder
@@ -99,10 +101,9 @@ import com.example.ui.theme.TextMuted
 @Composable
 fun CinemaHeroHeader(
     defaultDecoder: DecoderMode,
-    powerProfile: PowerProfile,
-    backgroundPlayEnabled: Boolean,
+    sleepTimer: SleepTimerState,
     onCycleDecoder: () -> Unit,
-    onOpenPowerTab: () -> Unit,
+    onOpenSleepMode: () -> Unit,
     onLinkFolder: () -> Unit,
     onPickVideo: () -> Unit,
     modifier: Modifier = Modifier
@@ -177,32 +178,33 @@ fun CinemaHeroHeader(
 
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Surface(
-                        onClick = onOpenPowerTab,
+                        onClick = onOpenSleepMode,
                         shape = RoundedCornerShape(50),
-                        color = if (backgroundPlayEnabled) Color(0xFF0E2F26) else CardSlate,
+                        color = if (sleepTimer.isActive) Color(0xFF0E2F26) else CardSlate,
                         border = BorderStroke(
                             1.dp,
-                            if (backgroundPlayEnabled) MintSuccess.copy(alpha = 0.6f) else GlassBorder
+                            if (sleepTimer.isActive) MintSuccess.copy(alpha = 0.7f) else GlassBorder
                         ),
                         modifier = Modifier
                             .minimumInteractiveComponentSize()
-                            .testTag("hero_power_pill")
+                            .testTag("hero_sleep_pill")
                     ) {
                         Row(
                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Filled.BatterySaver,
-                                contentDescription = null,
-                                tint = if (powerProfile == PowerProfile.ECO) MintSuccess else ElectricCyan,
-                                modifier = Modifier.size(15.dp)
+                                imageVector = Icons.Filled.Bedtime,
+                                contentDescription = stringResource(R.string.cd_sleep_timer),
+                                tint = if (sleepTimer.isActive) MintSuccess else ElectricCyan,
+                                modifier = Modifier.size(16.dp)
                             )
                             Text(
-                                text = powerProfile.label.split(" ").first(),
+                                text = if (sleepTimer.isActive) sleepTimer.badgeLabel else "Sleep",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = Color.White
+                                fontFamily = if (sleepTimer.isActive) JetBrainsMonoFontFamily else null,
+                                color = if (sleepTimer.isActive) MintSuccess else Color.White
                             )
                         }
                     }
@@ -320,6 +322,7 @@ private fun SourceQuickChip(
 @Composable
 fun BackgroundMiniPlayerBar(
     nowPlaying: NowPlayingSnapshot,
+    sleepTimer: SleepTimerState,
     onResumeVideo: () -> Unit,
     onTogglePlayPause: () -> Unit,
     onStop: () -> Unit,
@@ -366,10 +369,15 @@ fun BackgroundMiniPlayerBar(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                val statusText = when {
+                    sleepTimer.isActive -> "Sleep auto-close: ${sleepTimer.badgeLabel}"
+                    nowPlaying.isPlaying -> "Playing in background • Tap to return"
+                    else -> "Paused in background"
+                }
                 Text(
-                    text = if (nowPlaying.isPlaying) "Playing in background • Tap to return" else "Paused in background",
+                    text = statusText,
                     style = MaterialTheme.typography.bodySmall,
-                    color = ElectricCyan
+                    color = if (sleepTimer.isActive) MintSuccess else ElectricCyan
                 )
             }
             IconButton(
@@ -773,216 +781,165 @@ fun MetadataBadge(text: String, highlight: Boolean) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PowerAndBatterySection(
+fun SleepAndPlaybackModalSheet(
     prefs: PlaybackPrefs,
-    batteryStatus: BatteryStatusSnapshot,
-    onSelectPowerProfile: (PowerProfile) -> Unit,
+    sleepTimer: SleepTimerState,
+    onDismiss: () -> Unit,
+    onSelectSleepTimer: (SleepTimerOption) -> Unit,
+    onSetCustomSleepMinutes: (Int) -> Unit,
     onToggleBackgroundPlay: (Boolean) -> Unit,
-    onToggleAutoEco: (Boolean) -> Unit,
+    onToggleAutoResume: (Boolean) -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = ElevatedSlate,
+        contentColor = MaterialTheme.colorScheme.onSurface
+    ) {
+        SleepModePanelContent(
+            prefs = prefs,
+            sleepTimer = sleepTimer,
+            onSelectSleepTimer = onSelectSleepTimer,
+            onSetCustomSleepMinutes = onSetCustomSleepMinutes,
+            onToggleBackgroundPlay = onToggleBackgroundPlay,
+            onToggleAutoResume = onToggleAutoResume,
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp)
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun SleepModePanelContent(
+    prefs: PlaybackPrefs,
+    sleepTimer: SleepTimerState,
+    onSelectSleepTimer: (SleepTimerOption) -> Unit,
+    onSetCustomSleepMinutes: (Int) -> Unit,
+    onToggleBackgroundPlay: (Boolean) -> Unit,
     onToggleAutoResume: (Boolean) -> Unit,
-    onOpenBatterySettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Device Battery & System Optimization Guard Card
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = ElevatedSlate,
-            border = BorderStroke(
-                1.dp,
-                if (batteryStatus.isIgnoringBatteryOptimizations) MintSuccess.copy(alpha = 0.45f)
-                else AmberWarm.copy(alpha = 0.55f)
-            ),
-            modifier = Modifier.fillMaxWidth()
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (batteryStatus.isCharging) Icons.Filled.BatteryChargingFull else Icons.Filled.BatterySaver,
-                            contentDescription = null,
-                            tint = if (batteryStatus.isIgnoringBatteryOptimizations) MintSuccess else AmberWarm
-                        )
-                        Column {
-                            Text("Battery & Doze Guard", style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                text = "Device battery ${batteryStatus.batteryPercent}% • " +
-                                    if (batteryStatus.isSystemPowerSaveMode) "System Saver ON" else "Normal thermal state",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = TextMuted
-                            )
-                        }
-                    }
+                Icon(
+                    imageVector = Icons.Filled.Bedtime,
+                    contentDescription = null,
+                    tint = if (sleepTimer.isActive) MintSuccess else ElectricCyan
+                )
+                Column {
+                    Text("Sleeping Time Mode", style = MaterialTheme.typography.titleLarge)
                     Text(
-                        text = "${batteryStatus.batteryPercent}%",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontFamily = JetBrainsMonoFontFamily,
-                        color = ElectricCyan
+                        text = "Stops playback & auto-closes app when timer ends",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted
                     )
                 }
-
+            }
+            if (sleepTimer.isActive) {
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = if (batteryStatus.isIgnoringBatteryOptimizations) Color(0xFF0E2F26) else AmberContainer,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (batteryStatus.isIgnoringBatteryOptimizations) Icons.Filled.CheckCircle else Icons.Filled.Warning,
-                            contentDescription = null,
-                            tint = if (batteryStatus.isIgnoringBatteryOptimizations) MintSuccess else AmberWarm,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Text(
-                            text = if (batteryStatus.isIgnoringBatteryOptimizations) {
-                                "Unrestricted: Android will not kill KinoX during background audio playback."
-                            } else {
-                                "Battery restricted: Android Doze may pause background audio when screen is off."
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = Color.White,
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-
-                Button(
-                    onClick = onOpenBatterySettings,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (batteryStatus.isIgnoringBatteryOptimizations) CardSlate else ElectricCyan,
-                        contentColor = if (batteryStatus.isIgnoringBatteryOptimizations) ElectricCyan else ObsidianBackground
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .minimumInteractiveComponentSize()
-                        .testTag("open_battery_settings_button")
+                    shape = RoundedCornerShape(50),
+                    color = Color(0xFF0E2F26),
+                    border = BorderStroke(1.dp, MintSuccess.copy(alpha = 0.65f))
                 ) {
                     Text(
-                        text = if (batteryStatus.isIgnoringBatteryOptimizations) {
-                            "Review Android Battery Settings"
-                        } else {
-                            "Allow Unrestricted Background Play"
-                        },
-                        fontWeight = FontWeight.Bold
+                        text = sleepTimer.badgeLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontFamily = JetBrainsMonoFontFamily,
+                        color = MintSuccess,
+                        modifier = Modifier
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                            .testTag("sleep_timer_countdown_badge")
                     )
                 }
             }
         }
 
-        // Background Play & Engine Toggles
-        Surface(
-            shape = RoundedCornerShape(18.dp),
-            color = ElevatedSlate,
-            border = BorderStroke(1.dp, GlassBorder),
-            modifier = Modifier.fillMaxWidth()
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Text("Background & Engine Controls", style = MaterialTheme.typography.titleMedium)
-
-                SettingToggleRow(
-                    title = "Background Playback System",
-                    subtitle = "Continue audio with notification controls when leaving app or locking screen",
-                    checked = prefs.backgroundPlayEnabled,
-                    onCheckedChange = onToggleBackgroundPlay,
-                    testTag = "toggle_background_play"
-                )
-                SettingToggleRow(
-                    title = "Auto-Eco on System Battery Saver",
-                    subtitle = "Drop to strict HW decoding & 250ms polling when phone enters Saver mode",
-                    checked = prefs.autoEcoOnBatterySaver,
-                    onCheckedChange = onToggleAutoEco,
-                    testTag = "toggle_auto_eco"
-                )
-                SettingToggleRow(
-                    title = "Auto-Resume Last Position",
-                    subtitle = "Automatically restore saved timestamp on local videos",
-                    checked = prefs.autoResume,
-                    onCheckedChange = onToggleAutoResume,
-                    testTag = "toggle_auto_resume"
+            SleepTimerOption.entries.forEach { option ->
+                val selected = sleepTimer.option == option && sleepTimer.customMinutes == 0
+                FilterChip(
+                    selected = selected,
+                    onClick = { onSelectSleepTimer(option) },
+                    label = { Text(option.label) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = SoftCyanContainer,
+                        selectedLabelColor = ElectricCyan
+                    ),
+                    modifier = Modifier.testTag("sleep_chip_${option.name.lowercase()}")
                 )
             }
         }
 
-        // Power Profiles
-        Text("Playback Power Profiles", style = MaterialTheme.typography.titleMedium)
-        PowerProfile.entries.forEach { profile ->
-            val selected = prefs.powerProfile == profile
-            Surface(
-                onClick = { onSelectPowerProfile(profile) },
-                shape = RoundedCornerShape(16.dp),
-                color = if (selected) SoftCyanContainer else ElevatedSlate,
-                border = BorderStroke(1.dp, if (selected) ElectricCyan else GlassBorder),
+        // Custom +/- 5 min adjuster
+        val currentMins = if (sleepTimer.isActive && sleepTimer.option != SleepTimerOption.END_OF_VIDEO) {
+            ((sleepTimer.remainingSeconds + 59L) / 60L).toInt()
+        } else 0
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedButton(
+                onClick = { onSetCustomSleepMinutes((currentMins - 5).coerceAtLeast(0)) },
+                enabled = currentMins > 0,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag("power_profile_${profile.name.lowercase()}")
+                    .weight(1f)
+                    .minimumInteractiveComponentSize()
             ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    RadioButton(
-                        selected = selected,
-                        onClick = { onSelectPowerProfile(profile) },
-                        colors = RadioButtonDefaults.colors(selectedColor = ElectricCyan)
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Filled.Bolt,
-                                contentDescription = null,
-                                tint = if (profile == PowerProfile.ECO) MintSuccess else ElectricCyan,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = profile.label,
-                                style = MaterialTheme.typography.titleSmall,
-                                color = if (selected) ElectricCyan else Color.White
-                            )
-                            MetadataBadge(
-                                text = "${profile.minBufferMs / 1000}-${profile.maxBufferMs / 1000}s buf",
-                                highlight = selected
-                            )
-                        }
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = profile.tagline,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted
-                        )
-                    }
-                }
+                Text("-5 min", color = ElectricCyan)
+            }
+            OutlinedButton(
+                onClick = { onSetCustomSleepMinutes((currentMins + 5).coerceAtMost(240)) },
+                modifier = Modifier
+                    .weight(1f)
+                    .minimumInteractiveComponentSize()
+                    .testTag("sleep_add_5m_button")
+            ) {
+                Text("+5 min", color = ElectricCyan)
             }
         }
+
+        HorizontalDivider(color = DividerSubtle)
+
+        SettingToggleRow(
+            title = "Background Playback",
+            subtitle = "Keep audio playing when locking screen or switching apps",
+            checked = prefs.backgroundPlayEnabled,
+            onCheckedChange = onToggleBackgroundPlay,
+            testTag = "toggle_background_play"
+        )
+
+        SettingToggleRow(
+            title = "Auto-Resume Last Position",
+            subtitle = "Resume local videos right where you left off",
+            checked = prefs.autoResume,
+            onCheckedChange = onToggleAutoResume,
+            testTag = "toggle_auto_resume"
+        )
     }
 }
 
 @Composable
-private fun SettingToggleRow(
+internal fun SettingToggleRow(
     title: String,
     subtitle: String,
     checked: Boolean,

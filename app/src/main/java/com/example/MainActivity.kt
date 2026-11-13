@@ -20,7 +20,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -74,6 +76,12 @@ class MainActivity : ComponentActivity() {
         )
 
         extractExternalVideoIntent(intent)
+
+        lifecycleScope.launch {
+            KinoXPlayerHolder.sleepAutoCloseEvents.collect {
+                finishAndRemoveTask()
+            }
+        }
 
         setContent {
             KinoXTheme {

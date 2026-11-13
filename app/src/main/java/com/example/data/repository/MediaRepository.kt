@@ -14,8 +14,8 @@ import com.example.data.local.VideoHistoryEntity
 import com.example.data.model.AspectRatioMode
 import com.example.data.model.DecoderMode
 import com.example.data.model.FolderItem
+import com.example.data.model.OrientationMode
 import com.example.data.model.PlaybackPrefs
-import com.example.data.model.PowerProfile
 import com.example.data.model.SubtitleStylePrefs
 import com.example.data.model.VideoItem
 import kotlinx.coroutines.Dispatchers
@@ -46,15 +46,33 @@ class MediaRepository(
 
     suspend fun updateDefaultDecoder(mode: DecoderMode) = prefsStore.updateDefaultDecoder(mode)
 
-    suspend fun updatePowerProfile(profile: PowerProfile) = prefsStore.updatePowerProfile(profile)
+    suspend fun updateDefaultAspect(mode: AspectRatioMode) = prefsStore.updateDefaultAspect(mode)
+
+    suspend fun updateDefaultOrientation(mode: OrientationMode) = prefsStore.updateDefaultOrientation(mode)
+
+    suspend fun updateDefaultSpeed(speed: Float) = prefsStore.updateDefaultSpeed(speed)
+
+    suspend fun updateSeekStepSeconds(seconds: Int) = prefsStore.updateSeekStepSeconds(seconds)
 
     suspend fun updateBackgroundPlayEnabled(enabled: Boolean) = prefsStore.updateBackgroundPlayEnabled(enabled)
 
-    suspend fun updateAutoEcoOnBatterySaver(enabled: Boolean) = prefsStore.updateAutoEcoOnBatterySaver(enabled)
-
     suspend fun updateAutoResume(enabled: Boolean) = prefsStore.updateAutoResume(enabled)
 
+    suspend fun updateBrightnessGesture(enabled: Boolean) = prefsStore.updateBrightnessGesture(enabled)
+
+    suspend fun updateVolumeGesture(enabled: Boolean) = prefsStore.updateVolumeGesture(enabled)
+
+    suspend fun updateSeekGesture(enabled: Boolean) = prefsStore.updateSeekGesture(enabled)
+
+    suspend fun updatePinchZoom(enabled: Boolean) = prefsStore.updatePinchZoom(enabled)
+
+    suspend fun updateDoubleTapSeek(enabled: Boolean) = prefsStore.updateDoubleTapSeek(enabled)
+
     suspend fun updateSubtitleStyle(style: SubtitleStylePrefs) = prefsStore.updateSubtitleStyle(style)
+
+    suspend fun resetSettingsToDefaults() = prefsStore.resetAllToDefaults()
+
+    suspend fun clearWatchHistory() = dao.clearAllVideoHistory()
 
     suspend fun getVideoHistoryByUri(uriString: String): VideoItem? =
         dao.getVideoHistory(uriString)?.toModel()
@@ -315,7 +333,8 @@ class MediaRepository(
 
     companion object {
         private val VIDEO_EXTENSIONS = listOf(
-            ".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v", ".ts", ".3gp", ".flv", ".wmv"
+            ".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v",
+            ".ts", ".mts", ".m2ts", ".3gp", ".flv", ".mpg", ".mpeg"
         )
     }
 }

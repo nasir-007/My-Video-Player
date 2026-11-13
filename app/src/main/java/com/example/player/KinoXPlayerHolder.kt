@@ -10,17 +10,30 @@ import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.SeekParameters
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.session.MediaController
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionToken
 import com.example.MainActivity
 import com.example.data.model.DecoderMode
-import com.example.data.model.PowerProfile
+import com.example.data.model.SleepTimerOption
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 data class NowPlayingSnapshot(
     val uriString: String = "",
@@ -29,7 +42,29 @@ data class NowPlayingSnapshot(
     val isActive: Boolean = false
 )
 
+data class SleepTimerState(
+    val option: SleepTimerOption = SleepTimerOption.OFF,
+    val remainingSeconds: Long = 0L,
+    val customMinutes: Int = 0
+) {
+    val isActive: Boolean
+        get() = option != SleepTimerOption.OFF || customMinutes > 0
+
+    val badgeLabel: String
+        get() = when {
+            option == SleepTimerOption.END_OF_VIDEO -> "END"
+            isActive -> {
+                val mins = remainingSeconds / 60L
+                val secs = remainingSeconds % 60L
+                String.format(java.util.Locale.US, "%d:%02d", mins, secs)
+            }
+            else -> ""
+        }
+}
+
 object KinoXPlayerHolder {
+
+    private val holderScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
     @Volatile
     var exoPlayer: ExoPlayer? = null
@@ -44,10 +79,6 @@ object KinoXPlayerHolder {
         private set
 
     @Volatile
-    var currentPowerProfile: PowerProfile = PowerProfile.BALANCED
-        private set
-
-    @Volatile
     var backgroundPlayEnabled: Boolean = true
 
     @Volatile
@@ -56,10 +87,24 @@ object KinoXPlayerHolder {
     @Volatile
     var currentTitle: String = ""
 
+    @Volatile
+    private var progressSaver: (() -> Unit)? = null
+
     private val _nowPlaying = MutableStateFlow(NowPlayingSnapshot())
     val nowPlaying: StateFlow<NowPlayingSnapshot> = _nowPlaying.asStateFlow()
 
+    private val _sleepTimer = MutableStateFlow(SleepTimerState())
+    val sleepTimer: StateFlow<SleepTimerState> = _sleepTimer.asStateFlow()
+
+    private val _sleepAutoCloseEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val sleepAutoCloseEvents: SharedFlow<Unit> = _sleepAutoCloseEvents.asSharedFlow()
+
     private var controllerFuture: ListenableFuture<MediaController>? = null
+    private var sleepTimerJob: Job? = null
+
+    fun registerProgressSaver(saver: (() -> Unit)?) {
+        progressSaver = saver
+    }
 
     fun updateNowPlayingMetadata(uriString: String, title: String) {
         currentUriString = uriString
@@ -72,29 +117,105 @@ object KinoXPlayerHolder {
         )
     }
 
+    fun setSleepTimer(option: SleepTimerOption) {
+        sleepTimerJob?.cancel()
+        when (option) {
+            SleepTimerOption.OFF -> {
+                _sleepTimer.value = SleepTimerState()
+            }
+            SleepTimerOption.END_OF_VIDEO -> {
+                _sleepTimer.value = SleepTimerState(
+                    option = SleepTimerOption.END_OF_VIDEO,
+                    remainingSeconds = 0L,
+                    customMinutes = 0
+                )
+            }
+            else -> startCountdown(
+                option = option,
+                totalMinutes = option.minutes,
+                customMinutes = 0
+            )
+        }
+    }
+
+    fun setCustomSleepMinutes(minutes: Int) {
+        sleepTimerJob?.cancel()
+        val clamped = minutes.coerceIn(0, 240)
+        if (clamped == 0) {
+            _sleepTimer.value = SleepTimerState()
+            return
+        }
+        startCountdown(
+            option = SleepTimerOption.OFF,
+            totalMinutes = clamped,
+            customMinutes = clamped
+        )
+    }
+
+    private fun startCountdown(
+        option: SleepTimerOption,
+        totalMinutes: Int,
+        customMinutes: Int
+    ) {
+        val totalSeconds = totalMinutes * 60L
+        _sleepTimer.value = SleepTimerState(
+            option = option,
+            remainingSeconds = totalSeconds,
+            customMinutes = customMinutes
+        )
+        sleepTimerJob = holderScope.launch {
+            var remaining = totalSeconds
+            while (remaining > 0L && isActive) {
+                delay(1000L)
+                remaining--
+                _sleepTimer.value = _sleepTimer.value.copy(remainingSeconds = remaining)
+            }
+            if (isActive && remaining <= 0L) {
+                triggerSleepAutoClose()
+            }
+        }
+    }
+
+    fun triggerSleepAutoClose() {
+        sleepTimerJob?.cancel()
+        _sleepTimer.value = SleepTimerState()
+        runCatching { progressSaver?.invoke() }
+        stopAndClearSession()
+        disconnectBackgroundService()
+        _sleepAutoCloseEvents.tryEmit(Unit)
+    }
+
     @OptIn(UnstableApi::class)
     @Synchronized
     fun buildOrReplacePlayer(
         context: Context,
         decoderMode: DecoderMode,
-        powerProfile: PowerProfile
+        seekStepSeconds: Int = 10
     ): ExoPlayer {
         val appContext = context.applicationContext
         val oldPlayer = exoPlayer
 
         val renderersFactory = DecoderFactory.createRenderersFactory(appContext, decoderMode)
-        val loadControl = BatteryOptimizer.buildLoadControl(powerProfile)
+        val loadControl = BatteryOptimizer.buildAlwaysOptimizedLoadControl(appContext)
         val audioAttributes = AudioAttributes.Builder()
             .setUsage(C.USAGE_MEDIA)
             .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
             .build()
 
+        val extractorsFactory = DefaultExtractorsFactory()
+            .setConstantBitrateSeekingEnabled(true)
+            .setConstantBitrateSeekingAlwaysEnabled(true)
+        val mediaSourceFactory = DefaultMediaSourceFactory(appContext, extractorsFactory)
+        val seekIncrementMs = seekStepSeconds.coerceIn(5, 60) * 1000L
+
         val newPlayer = ExoPlayer.Builder(appContext, renderersFactory)
+            .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
+            .setSeekParameters(SeekParameters.CLOSEST_SYNC)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
-            .setSeekBackIncrementMs(10_000L)
-            .setSeekForwardIncrementMs(10_000L)
+            .setSeekBackIncrementMs(seekIncrementMs)
+            .setSeekForwardIncrementMs(seekIncrementMs)
             .setWakeMode(C.WAKE_MODE_NONE)
             .build()
 
@@ -108,11 +229,18 @@ object KinoXPlayerHolder {
                     isActive = currentUriString.isNotBlank()
                 )
             }
+
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED &&
+                    _sleepTimer.value.option == SleepTimerOption.END_OF_VIDEO
+                ) {
+                    triggerSleepAutoClose()
+                }
+            }
         })
 
         exoPlayer = newPlayer
         currentDecoderMode = decoderMode
-        currentPowerProfile = powerProfile
 
         val existingSession = mediaSession
         if (existingSession != null) {
@@ -129,7 +257,7 @@ object KinoXPlayerHolder {
     fun getOrCreateMediaSession(context: Context): MediaSession {
         mediaSession?.let { return it }
         val appContext = context.applicationContext
-        val player = exoPlayer ?: buildOrReplacePlayer(appContext, currentDecoderMode, currentPowerProfile)
+        val player = exoPlayer ?: buildOrReplacePlayer(appContext, currentDecoderMode)
         return mediaSession ?: createMediaSession(appContext, player)
     }
 
@@ -181,6 +309,8 @@ object KinoXPlayerHolder {
 
     @Synchronized
     fun releaseAll() {
+        sleepTimerJob?.cancel()
+        _sleepTimer.value = SleepTimerState()
         disconnectBackgroundService()
         mediaSession?.release()
         mediaSession = null

@@ -20,6 +20,9 @@ interface KinoXDao {
     @Query("DELETE FROM video_history WHERE uriString = :uriString")
     suspend fun deleteVideoHistory(uriString: String)
 
+    @Query("DELETE FROM video_history")
+    suspend fun clearAllVideoHistory()
+
     @Query("SELECT * FROM pinned_folders ORDER BY addedAt DESC")
     fun observePinnedFolders(): Flow<List<PinnedFolderEntity>>
 

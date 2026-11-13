@@ -24,6 +24,11 @@ private enum class DragAxis { NONE, VERTICAL_LEFT, VERTICAL_RIGHT, HORIZONTAL_SE
 @Composable
 fun PlayerGestureOverlay(
     isLocked: Boolean,
+    brightnessGestureEnabled: Boolean,
+    volumeGestureEnabled: Boolean,
+    seekGestureEnabled: Boolean,
+    pinchZoomEnabled: Boolean,
+    doubleTapSeekEnabled: Boolean,
     durationMs: Long,
     currentPositionMs: Long,
     currentBrightnessFraction: () -> Float,
@@ -50,7 +55,7 @@ fun PlayerGestureOverlay(
         modifier = modifier
             .fillMaxSize()
             .testTag("player_gesture_layer")
-            .pointerInput(isLocked) {
+            .pointerInput(isLocked, doubleTapSeekEnabled) {
                 detectTapGestures(
                     onTap = {
                         if (isLocked) onLockedTap() else onSingleTap()
@@ -58,6 +63,8 @@ fun PlayerGestureOverlay(
                     onDoubleTap = { offset ->
                         if (isLocked) {
                             onLockedTap()
+                        } else if (!doubleTapSeekEnabled) {
+                            onDoubleTapCenter()
                         } else {
                             val ratio = offset.x / size.width.coerceAtLeast(1)
                             when {
@@ -69,7 +76,14 @@ fun PlayerGestureOverlay(
                     }
                 )
             }
-            .pointerInput(isLocked, durationMs) {
+            .pointerInput(
+                isLocked,
+                durationMs,
+                brightnessGestureEnabled,
+                volumeGestureEnabled,
+                seekGestureEnabled,
+                pinchZoomEnabled
+            ) {
                 if (isLocked) return@pointerInput
 
                 awaitEachGesture {
@@ -92,6 +106,7 @@ fun PlayerGestureOverlay(
                         if (pressedChanges.isEmpty()) break
 
                         if (pressedChanges.size >= 2) {
+                            if (!pinchZoomEnabled) continue
                             dragAxis = DragAxis.PINCH_ZOOM
                             val zoomChange = event.calculateZoom()
                             val panChange = event.calculatePan()
@@ -114,11 +129,11 @@ fun PlayerGestureOverlay(
                         if (dragAxis == DragAxis.NONE) {
                             if (abs(cumulativeDx) > touchSlop || abs(cumulativeDy) > touchSlop) {
                                 dragAxis = if (abs(cumulativeDx) > abs(cumulativeDy)) {
-                                    DragAxis.HORIZONTAL_SEEK
+                                    if (seekGestureEnabled) DragAxis.HORIZONTAL_SEEK else DragAxis.NONE
                                 } else if (isLeftSide) {
-                                    DragAxis.VERTICAL_LEFT
+                                    if (brightnessGestureEnabled) DragAxis.VERTICAL_LEFT else DragAxis.NONE
                                 } else {
-                                    DragAxis.VERTICAL_RIGHT
+                                    if (volumeGestureEnabled) DragAxis.VERTICAL_RIGHT else DragAxis.NONE
                                 }
                             }
                         }
@@ -139,7 +154,6 @@ fun PlayerGestureOverlay(
                             DragAxis.HORIZONTAL_SEEK -> {
                                 change.consume()
                                 val widthPx = size.width.coerceAtLeast(1).toFloat()
-                                // Full horizontal swipe maps to max 120 seconds (or full duration if shorter)
                                 val spanMs = if (durationMs in 1L..120_000L) durationMs else 120_000L
                                 val seekDeltaMs = ((cumulativeDx / widthPx) * spanMs).toLong()
                                 val target = if (durationMs > 0L) {

@@ -29,51 +29,14 @@ enum class DecoderMode(val shortLabel: String, val fullName: String, val summary
     }
 }
 
-enum class PowerProfile(
-    val label: String,
-    val tagline: String,
-    val minBufferMs: Int,
-    val maxBufferMs: Int,
-    val tickerIntervalMs: Long,
-    val preferredDecoder: DecoderMode
-) {
-    ECO(
-        label = "Eco Saver",
-        tagline = "Strict HW zero-copy decoding, compact buffers & 250ms low-wakeup UI polling",
-        minBufferMs = 8_000,
-        maxBufferMs = 18_000,
-        tickerIntervalMs = 250L,
-        preferredDecoder = DecoderMode.HW
-    ),
-    BALANCED(
-        label = "Balanced",
-        tagline = "Smart HW+ decoding with adaptive buffering and low idle drain",
-        minBufferMs = 15_000,
-        maxBufferMs = 35_000,
-        tickerIntervalMs = 100L,
-        preferredDecoder = DecoderMode.HW_PLUS
-    ),
-    CINEMA(
-        label = "Cinema Max",
-        tagline = "Extended pre-buffering and 65ms ultra-smooth timeline & subtitle sync",
-        minBufferMs = 25_000,
-        maxBufferMs = 60_000,
-        tickerIntervalMs = 65L,
-        preferredDecoder = DecoderMode.HW_PLUS
-    );
-
-    companion object {
-        fun fromName(value: String?): PowerProfile =
-            entries.firstOrNull { it.name == value } ?: BALANCED
-    }
-}
-
 enum class SleepTimerOption(val label: String, val minutes: Int) {
     OFF("Off", 0),
+    MIN_10("10 min", 10),
     MIN_15("15 min", 15),
     MIN_30("30 min", 30),
     MIN_45("45 min", 45),
     MIN_60("60 min", 60),
+    MIN_90("90 min", 90),
     END_OF_VIDEO("End of Video", -1)
 }
 
@@ -110,11 +73,17 @@ data class SubtitleStylePrefs(
 
 data class PlaybackPrefs(
     val defaultDecoderMode: DecoderMode = DecoderMode.HW_PLUS,
-    val powerProfile: PowerProfile = PowerProfile.BALANCED,
+    val defaultAspectMode: AspectRatioMode = AspectRatioMode.FIT,
+    val defaultOrientationMode: OrientationMode = OrientationMode.AUTO,
+    val defaultPlaybackSpeed: Float = 1.0f,
     val backgroundPlayEnabled: Boolean = true,
-    val autoEcoOnBatterySaver: Boolean = true,
     val seekStepSeconds: Int = 10,
     val autoResume: Boolean = true,
+    val brightnessGestureEnabled: Boolean = true,
+    val volumeGestureEnabled: Boolean = true,
+    val seekGestureEnabled: Boolean = true,
+    val pinchZoomEnabled: Boolean = true,
+    val doubleTapSeekEnabled: Boolean = true,
     val subtitleStyle: SubtitleStylePrefs = SubtitleStylePrefs()
 )
 

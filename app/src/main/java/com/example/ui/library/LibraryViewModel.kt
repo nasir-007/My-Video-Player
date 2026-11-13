@@ -6,16 +6,18 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.local.KinoXDatabase
 import com.example.data.local.PlayerPreferencesStore
+import com.example.data.model.AspectRatioMode
 import com.example.data.model.DecoderMode
 import com.example.data.model.FolderItem
+import com.example.data.model.OrientationMode
 import com.example.data.model.PlaybackPrefs
-import com.example.data.model.PowerProfile
+import com.example.data.model.SleepTimerOption
+import com.example.data.model.SubtitleStylePrefs
 import com.example.data.model.VideoItem
 import com.example.data.repository.MediaRepository
-import com.example.player.BatteryOptimizer
-import com.example.player.BatteryStatusSnapshot
 import com.example.player.KinoXPlayerHolder
 import com.example.player.NowPlayingSnapshot
+import com.example.player.SleepTimerState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -27,7 +29,7 @@ import kotlinx.coroutines.launch
 enum class LibraryTab(val label: String) {
     FOLDERS("Folders"),
     VIDEOS("Videos"),
-    POWER("Power")
+    SETTINGS("Settings")
 }
 
 sealed interface LibraryUiState {
@@ -42,8 +44,8 @@ sealed interface LibraryUiState {
         val activeFolderVideos: List<VideoItem> = emptyList(),
         val isScanningFolder: Boolean = false,
         val playbackPrefs: PlaybackPrefs = PlaybackPrefs(),
-        val batteryStatus: BatteryStatusSnapshot = BatteryStatusSnapshot(),
         val nowPlaying: NowPlayingSnapshot = NowPlayingSnapshot(),
+        val sleepTimer: SleepTimerState = SleepTimerState(),
         val statusMessage: String? = null
     ) : LibraryUiState
     data class Error(val message: String) : LibraryUiState
@@ -56,8 +58,12 @@ private data class LibraryControlState(
     val activeFolderVideos: List<VideoItem> = emptyList(),
     val isScanningFolder: Boolean = false,
     val folderCounts: Map<String, Int> = emptyMap(),
-    val batteryStatus: BatteryStatusSnapshot = BatteryStatusSnapshot(),
     val statusMessage: String? = null
+)
+
+private data class PlayerRuntimeOverlay(
+    val nowPlaying: NowPlayingSnapshot,
+    val sleepTimer: SleepTimerState
 )
 
 class LibraryViewModel(application: Application) : AndroidViewModel(application) {
@@ -66,17 +72,22 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
     private val prefsStore = PlayerPreferencesStore(application)
     val repository = MediaRepository(application, database.kinoXDao(), prefsStore)
 
-    private val controlState = MutableStateFlow(
-        LibraryControlState(batteryStatus = BatteryOptimizer.readBatterySnapshot(application))
-    )
+    private val controlState = MutableStateFlow(LibraryControlState())
+
+    private val runtimeOverlay = combine(
+        KinoXPlayerHolder.nowPlaying,
+        KinoXPlayerHolder.sleepTimer
+    ) { nowPlaying, sleepTimer ->
+        PlayerRuntimeOverlay(nowPlaying = nowPlaying, sleepTimer = sleepTimer)
+    }
 
     val uiState: StateFlow<LibraryUiState> = combine(
         repository.videoHistory,
         repository.pinnedFolders,
         repository.playbackPrefs,
-        KinoXPlayerHolder.nowPlaying,
+        runtimeOverlay,
         controlState
-    ) { history, folders, prefs, nowPlaying, controls ->
+    ) { history, folders, prefs, runtime, controls ->
         KinoXPlayerHolder.backgroundPlayEnabled = prefs.backgroundPlayEnabled
 
         val query = controls.searchQuery.trim().lowercase()
@@ -107,8 +118,8 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             activeFolderVideos = filteredFolderVideos,
             isScanningFolder = controls.isScanningFolder,
             playbackPrefs = prefs,
-            batteryStatus = controls.batteryStatus,
-            nowPlaying = nowPlaying,
+            nowPlaying = runtime.nowPlaying,
+            sleepTimer = runtime.sleepTimer,
             statusMessage = controls.statusMessage
         )
     }.stateIn(
@@ -121,13 +132,7 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         refreshFolderCounts()
     }
 
-    fun refreshBatterySnapshot() {
-        val snapshot = BatteryOptimizer.readBatterySnapshot(getApplication())
-        controlState.update { it.copy(batteryStatus = snapshot) }
-    }
-
     fun selectTab(tab: LibraryTab) {
-        if (tab == LibraryTab.POWER) refreshBatterySnapshot()
         controlState.update { it.copy(activeTab = tab) }
     }
 
@@ -145,12 +150,33 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun selectPowerProfile(profile: PowerProfile) {
+    fun setDefaultDecoder(mode: DecoderMode) {
         viewModelScope.launch {
-            repository.updatePowerProfile(profile)
-            controlState.update {
-                it.copy(statusMessage = "Power mode set to ${profile.label}")
-            }
+            repository.updateDefaultDecoder(mode)
+        }
+    }
+
+    fun setDefaultAspect(mode: AspectRatioMode) {
+        viewModelScope.launch {
+            repository.updateDefaultAspect(mode)
+        }
+    }
+
+    fun setDefaultOrientation(mode: OrientationMode) {
+        viewModelScope.launch {
+            repository.updateDefaultOrientation(mode)
+        }
+    }
+
+    fun setDefaultSpeed(speed: Float) {
+        viewModelScope.launch {
+            repository.updateDefaultSpeed(speed)
+        }
+    }
+
+    fun setSeekStepSeconds(seconds: Int) {
+        viewModelScope.launch {
+            repository.updateSeekStepSeconds(seconds)
         }
     }
 
@@ -161,20 +187,81 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun setAutoEcoOnBatterySaver(enabled: Boolean) {
-        viewModelScope.launch {
-            repository.updateAutoEcoOnBatterySaver(enabled)
-        }
-    }
-
     fun setAutoResume(enabled: Boolean) {
         viewModelScope.launch {
             repository.updateAutoResume(enabled)
         }
     }
 
-    fun openSystemBatterySettings() {
-        BatteryOptimizer.openBatteryOptimizationSettings(getApplication())
+    fun setBrightnessGesture(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateBrightnessGesture(enabled)
+        }
+    }
+
+    fun setVolumeGesture(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateVolumeGesture(enabled)
+        }
+    }
+
+    fun setSeekGesture(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateSeekGesture(enabled)
+        }
+    }
+
+    fun setPinchZoom(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updatePinchZoom(enabled)
+        }
+    }
+
+    fun setDoubleTapSeek(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateDoubleTapSeek(enabled)
+        }
+    }
+
+    fun setSubtitleStyle(style: SubtitleStylePrefs) {
+        viewModelScope.launch {
+            repository.updateSubtitleStyle(style)
+        }
+    }
+
+    fun resetAllSettings() {
+        viewModelScope.launch {
+            repository.resetSettingsToDefaults()
+            KinoXPlayerHolder.backgroundPlayEnabled = true
+            controlState.update { it.copy(statusMessage = "Settings reset to defaults") }
+        }
+    }
+
+    fun clearWatchHistory() {
+        viewModelScope.launch {
+            repository.clearWatchHistory()
+            controlState.update { it.copy(statusMessage = "Watch history cleared") }
+        }
+    }
+
+    fun setSleepTimer(option: SleepTimerOption) {
+        KinoXPlayerHolder.setSleepTimer(option)
+        val msg = when (option) {
+            SleepTimerOption.OFF -> "Sleep Mode turned off"
+            SleepTimerOption.END_OF_VIDEO -> "Sleep Mode: App will auto-close when video ends"
+            else -> "Sleep Mode: App will auto-close in ${option.label}"
+        }
+        controlState.update { it.copy(statusMessage = msg) }
+    }
+
+    fun setCustomSleepMinutes(minutes: Int) {
+        KinoXPlayerHolder.setCustomSleepMinutes(minutes)
+        val msg = if (minutes <= 0) {
+            "Sleep Mode turned off"
+        } else {
+            "Sleep Mode: App will auto-close in $minutes min"
+        }
+        controlState.update { it.copy(statusMessage = msg) }
     }
 
     fun toggleMiniBarPlayPause() {

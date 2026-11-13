@@ -32,14 +32,14 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.BatterySaver
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.BatterySaver
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Movie
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -63,10 +63,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -76,13 +77,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.R
+import com.example.data.model.AspectRatioMode
+import com.example.data.model.DecoderMode
 import com.example.data.model.FolderItem
-import com.example.data.model.PowerProfile
+import com.example.data.model.OrientationMode
+import com.example.data.model.SleepTimerOption
+import com.example.data.model.SubtitleStylePrefs
 import com.example.data.model.VideoItem
 import com.example.ui.theme.ElectricCyan
 import com.example.ui.theme.ElevatedSlate
@@ -98,9 +100,9 @@ fun LibraryScreen(
     onPlayVideo: (uriString: String, title: String, subtitleUri: String?, folderUri: String?) -> Unit
 ) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    var showSleepSheet by remember { mutableStateOf(false) }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -122,16 +124,6 @@ fun LibraryScreen(
                 onPlayVideo(video.uriString, video.title, video.externalSubtitleUri, video.folderUri)
             }
         }
-    }
-
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                viewModel.refreshBatterySnapshot()
-            }
-        }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     val readyState = state as? LibraryUiState.Ready
@@ -171,6 +163,7 @@ fun LibraryScreen(
                     if (readyState != null && readyState.nowPlaying.isActive) {
                         BackgroundMiniPlayerBar(
                             nowPlaying = readyState.nowPlaying,
+                            sleepTimer = readyState.sleepTimer,
                             onResumeVideo = {
                                 onPlayVideo(
                                     readyState.nowPlaying.uriString,
@@ -275,7 +268,7 @@ fun LibraryScreen(
                                 state = ui,
                                 isWideScreen = isWideScreen,
                                 onCycleDecoder = { viewModel.cycleDefaultDecoder(ui.playbackPrefs.defaultDecoderMode) },
-                                onOpenPowerTab = { viewModel.selectTab(LibraryTab.POWER) },
+                                onOpenSleepMode = { showSleepSheet = true },
                                 onLinkFolder = { folderPickerLauncher.launch(null) },
                                 onPickVideo = {
                                     photoPickerLauncher.launch(
@@ -295,21 +288,45 @@ fun LibraryScreen(
                                     )
                                 },
                                 onRemoveHistory = viewModel::removeHistoryItem,
-                                onSelectPowerProfile = { profile ->
-                                    viewModel.selectPowerProfile(profile)
-                                },
+                                onSelectDecoder = viewModel::setDefaultDecoder,
+                                onSelectAspect = viewModel::setDefaultAspect,
+                                onSelectOrientation = viewModel::setDefaultOrientation,
+                                onSelectSpeed = viewModel::setDefaultSpeed,
+                                onSelectSeekStep = viewModel::setSeekStepSeconds,
                                 onToggleBackgroundPlay = { enabled ->
                                     if (enabled) requestNotificationIfNeeded()
                                     viewModel.setBackgroundPlayEnabled(enabled)
                                 },
-                                onToggleAutoEco = viewModel::setAutoEcoOnBatterySaver,
                                 onToggleAutoResume = viewModel::setAutoResume,
-                                onOpenBatterySettings = viewModel::openSystemBatterySettings
+                                onToggleBrightnessGesture = viewModel::setBrightnessGesture,
+                                onToggleVolumeGesture = viewModel::setVolumeGesture,
+                                onToggleSeekGesture = viewModel::setSeekGesture,
+                                onTogglePinchZoom = viewModel::setPinchZoom,
+                                onToggleDoubleTapSeek = viewModel::setDoubleTapSeek,
+                                onUpdateSubtitleStyle = viewModel::setSubtitleStyle,
+                                onSelectSleepTimer = viewModel::setSleepTimer,
+                                onClearWatchHistory = viewModel::clearWatchHistory,
+                                onResetSettings = viewModel::resetAllSettings
                             )
                         }
                     }
                 }
             }
+        }
+
+        if (showSleepSheet && readyState != null) {
+            SleepAndPlaybackModalSheet(
+                prefs = readyState.playbackPrefs,
+                sleepTimer = readyState.sleepTimer,
+                onDismiss = { showSleepSheet = false },
+                onSelectSleepTimer = viewModel::setSleepTimer,
+                onSetCustomSleepMinutes = viewModel::setCustomSleepMinutes,
+                onToggleBackgroundPlay = { enabled ->
+                    if (enabled) requestNotificationIfNeeded()
+                    viewModel.setBackgroundPlayEnabled(enabled)
+                },
+                onToggleAutoResume = viewModel::setAutoResume
+            )
         }
     }
 }
@@ -319,7 +336,7 @@ private fun LibraryContent(
     state: LibraryUiState.Ready,
     isWideScreen: Boolean,
     onCycleDecoder: () -> Unit,
-    onOpenPowerTab: () -> Unit,
+    onOpenSleepMode: () -> Unit,
     onLinkFolder: () -> Unit,
     onPickVideo: () -> Unit,
     onSearchChange: (String) -> Unit,
@@ -328,11 +345,22 @@ private fun LibraryContent(
     onUnpinFolder: (FolderItem) -> Unit,
     onPlayVideoItem: (VideoItem) -> Unit,
     onRemoveHistory: (String) -> Unit,
-    onSelectPowerProfile: (PowerProfile) -> Unit,
+    onSelectDecoder: (DecoderMode) -> Unit,
+    onSelectAspect: (AspectRatioMode) -> Unit,
+    onSelectOrientation: (OrientationMode) -> Unit,
+    onSelectSpeed: (Float) -> Unit,
+    onSelectSeekStep: (Int) -> Unit,
     onToggleBackgroundPlay: (Boolean) -> Unit,
-    onToggleAutoEco: (Boolean) -> Unit,
     onToggleAutoResume: (Boolean) -> Unit,
-    onOpenBatterySettings: () -> Unit
+    onToggleBrightnessGesture: (Boolean) -> Unit,
+    onToggleVolumeGesture: (Boolean) -> Unit,
+    onToggleSeekGesture: (Boolean) -> Unit,
+    onTogglePinchZoom: (Boolean) -> Unit,
+    onToggleDoubleTapSeek: (Boolean) -> Unit,
+    onUpdateSubtitleStyle: (SubtitleStylePrefs) -> Unit,
+    onSelectSleepTimer: (SleepTimerOption) -> Unit,
+    onClearWatchHistory: () -> Unit,
+    onResetSettings: () -> Unit
 ) {
     val columns = if (isWideScreen) 2 else 1
 
@@ -345,29 +373,28 @@ private fun LibraryContent(
             .fillMaxSize()
             .widthIn(max = 1040.dp)
     ) {
-        item(span = { GridItemSpan(columns) }) {
-            CinemaHeroHeader(
-                defaultDecoder = state.playbackPrefs.defaultDecoderMode,
-                powerProfile = state.playbackPrefs.powerProfile,
-                backgroundPlayEnabled = state.playbackPrefs.backgroundPlayEnabled,
-                onCycleDecoder = onCycleDecoder,
-                onOpenPowerTab = onOpenPowerTab,
-                onLinkFolder = onLinkFolder,
-                onPickVideo = onPickVideo
-            )
-        }
-
-        if (state.continueWatching.isNotEmpty() && state.activeTab != LibraryTab.POWER) {
+        if (state.activeTab != LibraryTab.SETTINGS) {
             item(span = { GridItemSpan(columns) }) {
-                ContinueWatchingSection(
-                    items = state.continueWatching,
-                    onPlayVideo = onPlayVideoItem,
-                    onRemoveHistory = onRemoveHistory
+                CinemaHeroHeader(
+                    defaultDecoder = state.playbackPrefs.defaultDecoderMode,
+                    sleepTimer = state.sleepTimer,
+                    onCycleDecoder = onCycleDecoder,
+                    onOpenSleepMode = onOpenSleepMode,
+                    onLinkFolder = onLinkFolder,
+                    onPickVideo = onPickVideo
                 )
             }
-        }
 
-        if (state.activeTab != LibraryTab.POWER) {
+            if (state.continueWatching.isNotEmpty()) {
+                item(span = { GridItemSpan(columns) }) {
+                    ContinueWatchingSection(
+                        items = state.continueWatching,
+                        onPlayVideo = onPlayVideoItem,
+                        onRemoveHistory = onRemoveHistory
+                    )
+                }
+            }
+
             item(span = { GridItemSpan(columns) }) {
                 OutlinedTextField(
                     value = state.searchQuery,
@@ -519,16 +546,34 @@ private fun LibraryContent(
                 }
             }
 
-            LibraryTab.POWER -> {
+            LibraryTab.SETTINGS -> {
                 item(span = { GridItemSpan(columns) }) {
-                    PowerAndBatterySection(
+                    Text(
+                        text = "Customize KinoX",
+                        style = MaterialTheme.typography.headlineSmall
+                    )
+                }
+                item(span = { GridItemSpan(columns) }) {
+                    SettingsCustomizationSection(
                         prefs = state.playbackPrefs,
-                        batteryStatus = state.batteryStatus,
-                        onSelectPowerProfile = onSelectPowerProfile,
+                        sleepTimer = state.sleepTimer,
+                        onSelectDecoder = onSelectDecoder,
+                        onSelectAspect = onSelectAspect,
+                        onSelectOrientation = onSelectOrientation,
+                        onSelectSpeed = onSelectSpeed,
+                        onSelectSeekStep = onSelectSeekStep,
                         onToggleBackgroundPlay = onToggleBackgroundPlay,
-                        onToggleAutoEco = onToggleAutoEco,
                         onToggleAutoResume = onToggleAutoResume,
-                        onOpenBatterySettings = onOpenBatterySettings
+                        onToggleBrightnessGesture = onToggleBrightnessGesture,
+                        onToggleVolumeGesture = onToggleVolumeGesture,
+                        onToggleSeekGesture = onToggleSeekGesture,
+                        onTogglePinchZoom = onTogglePinchZoom,
+                        onToggleDoubleTapSeek = onToggleDoubleTapSeek,
+                        onUpdateSubtitleStyle = onUpdateSubtitleStyle,
+                        onSelectSleepTimer = onSelectSleepTimer,
+                        onOpenSleepModal = onOpenSleepMode,
+                        onClearWatchHistory = onClearWatchHistory,
+                        onResetSettings = onResetSettings
                     )
                 }
             }
@@ -605,5 +650,5 @@ private fun EmptyLibraryCard(
 private fun tabIcon(tab: LibraryTab, selected: Boolean) = when (tab) {
     LibraryTab.FOLDERS -> if (selected) Icons.Filled.Folder else Icons.Outlined.Folder
     LibraryTab.VIDEOS -> if (selected) Icons.Filled.Movie else Icons.Outlined.Movie
-    LibraryTab.POWER -> if (selected) Icons.Filled.BatterySaver else Icons.Outlined.BatterySaver
+    LibraryTab.SETTINGS -> if (selected) Icons.Filled.Settings else Icons.Outlined.Settings
 }

@@ -18,7 +18,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BatterySaver
+import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.FileOpen
 import androidx.compose.material.icons.filled.Headphones
@@ -54,7 +54,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.DecoderMode
 import com.example.data.model.MediaTrackInfo
-import com.example.data.model.PowerProfile
 import com.example.data.model.SleepTimerOption
 import com.example.data.model.SubtitleStylePrefs
 import com.example.ui.theme.AmberWarm
@@ -85,9 +84,8 @@ fun PlayerBottomSheets(
     onSelectAudioTrack: (MediaTrackInfo) -> Unit,
     onSetSpeed: (Float) -> Unit,
     onToggleBackgroundPlay: (Boolean) -> Unit,
-    onSelectPowerProfile: (PowerProfile) -> Unit,
     onSelectSleepTimer: (SleepTimerOption) -> Unit,
-    onOpenBatterySettings: () -> Unit
+    onSetCustomSleepMinutes: (Int) -> Unit
 ) {
     if (state.activeSheet == PlayerSheetType.NONE) return
 
@@ -115,12 +113,11 @@ fun PlayerBottomSheets(
                 onSelectAudioTrack = onSelectAudioTrack,
                 onSetSpeed = onSetSpeed
             )
-            PlayerSheetType.POWER_BATTERY -> PowerAndBackgroundSheetContent(
+            PlayerSheetType.SLEEP_TIMER -> SleepModeSheetContent(
                 state = state,
                 onToggleBackgroundPlay = onToggleBackgroundPlay,
-                onSelectPowerProfile = onSelectPowerProfile,
                 onSelectSleepTimer = onSelectSleepTimer,
-                onOpenBatterySettings = onOpenBatterySettings
+                onSetCustomSleepMinutes = onSetCustomSleepMinutes
             )
             PlayerSheetType.NONE -> Unit
         }
@@ -129,13 +126,17 @@ fun PlayerBottomSheets(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PowerAndBackgroundSheetContent(
+private fun SleepModeSheetContent(
     state: PlayerUiState,
     onToggleBackgroundPlay: (Boolean) -> Unit,
-    onSelectPowerProfile: (PowerProfile) -> Unit,
     onSelectSleepTimer: (SleepTimerOption) -> Unit,
-    onOpenBatterySettings: () -> Unit
+    onSetCustomSleepMinutes: (Int) -> Unit
 ) {
+    val sleepTimer = state.sleepTimer
+    val currentMins = if (sleepTimer.isActive && sleepTimer.option != SleepTimerOption.END_OF_VIDEO) {
+        ((sleepTimer.remainingSeconds + 59L) / 60L).toInt()
+    } else 0
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -144,7 +145,89 @@ private fun PowerAndBackgroundSheetContent(
             .padding(bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text("Background Play & Battery", style = MaterialTheme.typography.titleLarge)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Bedtime,
+                    contentDescription = null,
+                    tint = if (sleepTimer.isActive) MintSuccess else ElectricCyan
+                )
+                Column {
+                    Text("Sleeping Time Mode", style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        text = "Stops playback & auto-closes app when timer finishes",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted
+                    )
+                }
+            }
+            if (sleepTimer.isActive) {
+                Surface(
+                    shape = RoundedCornerShape(50),
+                    color = Color(0xFF0E2F26),
+                    border = BorderStroke(1.dp, MintSuccess.copy(alpha = 0.65f))
+                ) {
+                    Text(
+                        text = sleepTimer.badgeLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontFamily = JetBrainsMonoFontFamily,
+                        color = MintSuccess,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                    )
+                }
+            }
+        }
+
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            SleepTimerOption.entries.forEach { option ->
+                val selected = sleepTimer.option == option && sleepTimer.customMinutes == 0
+                FilterChip(
+                    selected = selected,
+                    onClick = { onSelectSleepTimer(option) },
+                    label = { Text(option.label) },
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = SoftCyanContainer,
+                        selectedLabelColor = ElectricCyan
+                    )
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            OutlinedButton(
+                onClick = { onSetCustomSleepMinutes((currentMins - 5).coerceAtLeast(0)) },
+                enabled = currentMins > 0,
+                modifier = Modifier
+                    .weight(1f)
+                    .minimumInteractiveComponentSize()
+            ) {
+                Text("-5 min", color = ElectricCyan)
+            }
+            OutlinedButton(
+                onClick = { onSetCustomSleepMinutes((currentMins + 5).coerceAtMost(240)) },
+                modifier = Modifier
+                    .weight(1f)
+                    .minimumInteractiveComponentSize()
+            ) {
+                Text("+5 min", color = ElectricCyan)
+            }
+        }
+
+        HorizontalDivider(color = DividerSubtle)
 
         Surface(
             shape = RoundedCornerShape(16.dp),
@@ -163,9 +246,9 @@ private fun PowerAndBackgroundSheetContent(
                     tint = if (state.backgroundPlayEnabled) MintSuccess else TextMuted
                 )
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Background Audio Playback", style = MaterialTheme.typography.titleSmall)
+                    Text("Background Playback", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        text = "Keep playing via MediaSessionService when leaving app or locking screen",
+                        text = "Keep playing when locking screen or switching apps",
                         style = MaterialTheme.typography.bodySmall,
                         color = TextMuted
                     )
@@ -175,101 +258,6 @@ private fun PowerAndBackgroundSheetContent(
                     onCheckedChange = onToggleBackgroundPlay,
                     colors = SwitchDefaults.colors(checkedThumbColor = ObsidianBackground, checkedTrackColor = MintSuccess)
                 )
-            }
-        }
-
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Sleep Timer", style = MaterialTheme.typography.titleSmall)
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                SleepTimerOption.entries.forEach { option ->
-                    val selected = state.sleepTimerOption == option
-                    FilterChip(
-                        selected = selected,
-                        onClick = { onSelectSleepTimer(option) },
-                        label = { Text(option.label) },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = SoftCyanContainer,
-                            selectedLabelColor = ElectricCyan
-                        )
-                    )
-                }
-            }
-        }
-
-        HorizontalDivider(color = DividerSubtle)
-        Text("Power Optimization Profile", style = MaterialTheme.typography.titleSmall)
-
-        PowerProfile.entries.forEach { profile ->
-            val selected = state.powerProfile == profile
-            Surface(
-                onClick = { onSelectPowerProfile(profile) },
-                shape = RoundedCornerShape(14.dp),
-                color = if (selected) SoftCyanContainer else CardSlate,
-                border = BorderStroke(1.dp, if (selected) ElectricCyan else GlassBorder),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    RadioButton(
-                        selected = selected,
-                        onClick = { onSelectPowerProfile(profile) },
-                        colors = RadioButtonDefaults.colors(selectedColor = ElectricCyan)
-                    )
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = profile.label,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = if (selected) ElectricCyan else Color.White
-                        )
-                        Text(
-                            text = profile.tagline,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextMuted
-                        )
-                    }
-                }
-            }
-        }
-
-        Surface(
-            shape = RoundedCornerShape(14.dp),
-            color = ObsidianBackground,
-            border = BorderStroke(1.dp, GlassBorder),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier.padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.BatterySaver,
-                        contentDescription = null,
-                        tint = if (state.batteryStatus.isIgnoringBatteryOptimizations) MintSuccess else AmberWarm
-                    )
-                    Text(
-                        text = if (state.batteryStatus.isIgnoringBatteryOptimizations) {
-                            "Unrestricted • Battery ${state.batteryStatus.batteryPercent}%"
-                        } else {
-                            "System Doze may restrict background play"
-                        },
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-                TextButton(onClick = onOpenBatterySettings) {
-                    Text("Settings", color = ElectricCyan)
-                }
             }
         }
     }

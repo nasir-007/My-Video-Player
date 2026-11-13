@@ -30,13 +30,12 @@ import com.example.data.model.CodecTelemetry
 import com.example.data.model.DecoderMode
 import com.example.data.model.MediaTrackInfo
 import com.example.data.model.OrientationMode
-import com.example.data.model.PowerProfile
 import com.example.data.model.SleepTimerOption
 import com.example.data.model.SubtitleStylePrefs
 import com.example.data.repository.MediaRepository
 import com.example.player.BatteryOptimizer
-import com.example.player.BatteryStatusSnapshot
 import com.example.player.KinoXPlayerHolder
+import com.example.player.SleepTimerState
 import com.example.player.SubtitleCue
 import com.example.player.SubtitleParser
 import kotlinx.coroutines.Job
@@ -63,7 +62,7 @@ enum class PlayerSheetType {
     SUBTITLES,
     DECODER_INFO,
     AUDIO_SPEED,
-    POWER_BATTERY
+    SLEEP_TIMER
 }
 
 data class PlayerUiState(
@@ -78,14 +77,17 @@ data class PlayerUiState(
     val videoWidth: Int = 0,
     val videoHeight: Int = 0,
     val decoderMode: DecoderMode = DecoderMode.HW_PLUS,
-    val powerProfile: PowerProfile = PowerProfile.BALANCED,
     val backgroundPlayEnabled: Boolean = true,
-    val sleepTimerOption: SleepTimerOption = SleepTimerOption.OFF,
-    val sleepRemainingSeconds: Long = 0L,
-    val batteryStatus: BatteryStatusSnapshot = BatteryStatusSnapshot(),
+    val sleepTimer: SleepTimerState = SleepTimerState(),
     val aspectMode: AspectRatioMode = AspectRatioMode.FIT,
     val orientationMode: OrientationMode = OrientationMode.AUTO,
     val playbackSpeed: Float = 1.0f,
+    val seekStepSeconds: Int = 10,
+    val brightnessGestureEnabled: Boolean = true,
+    val volumeGestureEnabled: Boolean = true,
+    val seekGestureEnabled: Boolean = true,
+    val pinchZoomEnabled: Boolean = true,
+    val doubleTapSeekEnabled: Boolean = true,
     val isLocked: Boolean = false,
     val controlsVisible: Boolean = true,
     val unlockHintVisible: Boolean = false,
@@ -116,9 +118,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private val repository = MediaRepository(application, database.kinoXDao(), prefsStore)
     private val audioManager = application.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
-    private val _uiState = MutableStateFlow(
-        PlayerUiState(batteryStatus = BatteryOptimizer.readBatterySnapshot(application))
-    )
+    private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
 
     var currentExoPlayer: ExoPlayer? = null
@@ -129,22 +129,33 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private var embeddedCueText: String? = null
 
     private var positionTickerJob: Job? = null
-    private var sleepTimerJob: Job? = null
     private var hudHideJob: Job? = null
     private var gestureClearJob: Job? = null
     private var unlockHintJob: Job? = null
     private var lastSavedAtMs: Long = 0L
 
     init {
+        KinoXPlayerHolder.registerProgressSaver { persistProgress() }
         viewModelScope.launch {
             repository.playbackPrefs.collect { prefs ->
                 KinoXPlayerHolder.backgroundPlayEnabled = prefs.backgroundPlayEnabled
                 _uiState.update {
                     it.copy(
                         subtitleStyle = prefs.subtitleStyle,
-                        backgroundPlayEnabled = prefs.backgroundPlayEnabled
+                        backgroundPlayEnabled = prefs.backgroundPlayEnabled,
+                        seekStepSeconds = prefs.seekStepSeconds,
+                        brightnessGestureEnabled = prefs.brightnessGestureEnabled,
+                        volumeGestureEnabled = prefs.volumeGestureEnabled,
+                        seekGestureEnabled = prefs.seekGestureEnabled,
+                        pinchZoomEnabled = prefs.pinchZoomEnabled,
+                        doubleTapSeekEnabled = prefs.doubleTapSeekEnabled
                     )
                 }
+            }
+        }
+        viewModelScope.launch {
+            KinoXPlayerHolder.sleepTimer.collect { sleep ->
+                _uiState.update { it.copy(sleepTimer = sleep) }
             }
         }
     }
@@ -175,7 +186,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     durationMs = currentDuration,
                     playbackSpeed = currentSpeed,
                     decoderMode = KinoXPlayerHolder.currentDecoderMode,
-                    powerProfile = KinoXPlayerHolder.currentPowerProfile,
                     videoWidth = existingHolderPlayer.videoSize.width,
                     videoHeight = existingHolderPlayer.videoSize.height,
                     playerInstanceVersion = it.playerInstanceVersion + 1
@@ -211,20 +221,14 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             val app = getApplication<Application>()
             val prefs = repository.playbackPrefs.first()
-            val batterySnap = BatteryOptimizer.readBatterySnapshot(app)
             val history = repository.getVideoHistoryByUri(uriString)
 
-            val effectiveProfile = if (prefs.autoEcoOnBatterySaver && batterySnap.isSystemPowerSaveMode) {
-                PowerProfile.ECO
-            } else {
-                prefs.powerProfile
-            }
             val resolvedDecoder = when {
-                effectiveProfile == PowerProfile.ECO -> DecoderMode.HW
+                BatteryOptimizer.isSystemPowerSaveActive(app) -> DecoderMode.HW
                 history != null -> history.decoderMode
                 else -> prefs.defaultDecoderMode
             }
-            val resolvedAspect = history?.aspectMode ?: AspectRatioMode.FIT
+            val resolvedAspect = history?.aspectMode ?: prefs.defaultAspectMode
             val resolvedSubUri = subtitleUri ?: history?.externalSubtitleUri
             val resolvedDelay = history?.subtitleDelayMs ?: 0L
             val resumePosition = if (prefs.autoResume && history != null && history.lastPositionMs > 2000L) {
@@ -240,10 +244,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     title = title.ifBlank { history?.title ?: "Local Video" },
                     folderUri = folderUri ?: history?.folderUri,
                     decoderMode = resolvedDecoder,
-                    powerProfile = effectiveProfile,
                     backgroundPlayEnabled = prefs.backgroundPlayEnabled,
-                    batteryStatus = batterySnap,
                     aspectMode = resolvedAspect,
+                    orientationMode = prefs.defaultOrientationMode,
+                    playbackSpeed = prefs.defaultPlaybackSpeed,
+                    seekStepSeconds = prefs.seekStepSeconds,
+                    brightnessGestureEnabled = prefs.brightnessGestureEnabled,
+                    volumeGestureEnabled = prefs.volumeGestureEnabled,
+                    seekGestureEnabled = prefs.seekGestureEnabled,
+                    pinchZoomEnabled = prefs.pinchZoomEnabled,
+                    doubleTapSeekEnabled = prefs.doubleTapSeekEnabled,
                     externalSubtitleUri = resolvedSubUri,
                     externalSubtitleName = resolvedSubUri?.let(::resolveDisplayName),
                     subtitleDelayMs = resolvedDelay,
@@ -265,7 +275,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 uriString = uriString,
                 title = title,
                 decoderMode = resolvedDecoder,
-                powerProfile = effectiveProfile,
                 seekToMs = resumePosition,
                 playWhenReady = true
             )
@@ -276,13 +285,16 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         uriString: String,
         title: String,
         decoderMode: DecoderMode,
-        powerProfile: PowerProfile,
         seekToMs: Long,
         playWhenReady: Boolean
     ) {
         detachPlayerListeners()
         val app = getApplication<Application>()
-        val player = KinoXPlayerHolder.buildOrReplacePlayer(app, decoderMode, powerProfile)
+        val player = KinoXPlayerHolder.buildOrReplacePlayer(
+            context = app,
+            decoderMode = decoderMode,
+            seekStepSeconds = _uiState.value.seekStepSeconds
+        )
         attachListenersToPlayer(player)
 
         player.playbackParameters = PlaybackParameters(_uiState.value.playbackSpeed)
@@ -311,7 +323,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         _uiState.update {
             it.copy(
                 decoderMode = decoderMode,
-                powerProfile = powerProfile,
                 codecTelemetry = it.codecTelemetry.copy(decoderMode = decoderMode),
                 errorMessage = null,
                 playerInstanceVersion = it.playerInstanceVersion + 1
@@ -354,12 +365,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     isBuffering = playbackState == Player.STATE_BUFFERING,
                     durationMs = player.duration.coerceAtLeast(0L)
                 )
-            }
-            if (playbackState == Player.STATE_ENDED &&
-                _uiState.value.sleepTimerOption == SleepTimerOption.END_OF_VIDEO
-            ) {
-                setSleepTimer(SleepTimerOption.OFF)
-                pause(saveNow = true)
             }
         }
 
@@ -549,7 +554,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                         persistProgress()
                     }
                 }
-                delay(_uiState.value.powerProfile.tickerIntervalMs)
+                delay(BatteryOptimizer.optimalTickerIntervalMs(getApplication(), player?.isPlaying == true))
             }
         }
     }
@@ -626,31 +631,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             uriString = state.uriString,
             title = state.title,
             decoderMode = newMode,
-            powerProfile = state.powerProfile,
             seekToMs = resumePos,
             playWhenReady = wasPlaying
         )
         showTransientGestureHud(GestureHudState.Toast("Decoder: ${newMode.shortLabel} (${newMode.fullName})"))
         persistProgress(decoderOverride = newMode)
-    }
-
-    fun selectPowerProfile(profile: PowerProfile) {
-        val state = _uiState.value
-        viewModelScope.launch { repository.updatePowerProfile(profile) }
-        val nextDecoder = if (profile == PowerProfile.ECO) DecoderMode.HW else state.decoderMode
-        val player = currentExoPlayer
-        val resumePos = player?.currentPosition?.coerceAtLeast(0L) ?: state.positionMs
-        val wasPlaying = player?.playWhenReady ?: true
-
-        buildAndPreparePlayer(
-            uriString = state.uriString,
-            title = state.title,
-            decoderMode = nextDecoder,
-            powerProfile = profile,
-            seekToMs = resumePos,
-            playWhenReady = wasPlaying
-        )
-        showTransientGestureHud(GestureHudState.Toast("Power: ${profile.label}"))
     }
 
     fun toggleBackgroundPlay() {
@@ -668,45 +653,23 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun setSleepTimer(option: SleepTimerOption) {
-        sleepTimerJob?.cancel()
-        if (option == SleepTimerOption.OFF) {
-            _uiState.update { it.copy(sleepTimerOption = option, sleepRemainingSeconds = 0L) }
-            showTransientGestureHud(GestureHudState.Toast("Sleep Timer: Off"))
-            return
+        KinoXPlayerHolder.setSleepTimer(option)
+        val toastMsg = when (option) {
+            SleepTimerOption.OFF -> "Sleep Mode: Off"
+            SleepTimerOption.END_OF_VIDEO -> "Sleep Mode: Auto-close at end"
+            else -> "Sleep Mode: Auto-close in ${option.label}"
         }
-        if (option == SleepTimerOption.END_OF_VIDEO) {
-            _uiState.update { it.copy(sleepTimerOption = option, sleepRemainingSeconds = 0L) }
-            showTransientGestureHud(GestureHudState.Toast("Sleep Timer: End of Video"))
-            return
-        }
-
-        val totalSeconds = option.minutes * 60L
-        _uiState.update { it.copy(sleepTimerOption = option, sleepRemainingSeconds = totalSeconds) }
-        showTransientGestureHud(GestureHudState.Toast("Sleep Timer: ${option.label}"))
-
-        sleepTimerJob = viewModelScope.launch {
-            var remaining = totalSeconds
-            while (remaining > 0L && isActive) {
-                delay(1000L)
-                remaining--
-                _uiState.update { it.copy(sleepRemainingSeconds = remaining) }
-            }
-            if (isActive && remaining <= 0L) {
-                pause(saveNow = true)
-                _uiState.update { it.copy(sleepTimerOption = SleepTimerOption.OFF, sleepRemainingSeconds = 0L) }
-                showTransientGestureHud(GestureHudState.Toast("Sleep Timer paused playback"))
-            }
-        }
+        showTransientGestureHud(GestureHudState.Toast(toastMsg))
     }
 
-    fun refreshBatteryStatus() {
-        _uiState.update {
-            it.copy(batteryStatus = BatteryOptimizer.readBatterySnapshot(getApplication()))
+    fun setCustomSleepMinutes(minutes: Int) {
+        KinoXPlayerHolder.setCustomSleepMinutes(minutes)
+        val toastMsg = if (minutes <= 0) {
+            "Sleep Mode: Off"
+        } else {
+            "Sleep Mode: Auto-close in $minutes min"
         }
-    }
-
-    fun openSystemBatterySettings() {
-        BatteryOptimizer.openBatteryOptimizationSettings(getApplication())
+        showTransientGestureHud(GestureHudState.Toast(toastMsg))
     }
 
     fun retryPlayback() {
@@ -715,7 +678,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             uriString = state.uriString,
             title = state.title,
             decoderMode = state.decoderMode,
-            powerProfile = state.powerProfile,
             seekToMs = state.positionMs,
             playWhenReady = true
         )
@@ -782,7 +744,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun openSheet(sheet: PlayerSheetType) {
         hudHideJob?.cancel()
-        if (sheet == PlayerSheetType.POWER_BATTERY) refreshBatteryStatus()
         _uiState.update { it.copy(activeSheet = sheet, controlsVisible = true) }
     }
 
@@ -1008,6 +969,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     override fun onCleared() {
         persistProgress()
+        KinoXPlayerHolder.registerProgressSaver(null)
         val keepPlayingInBackground =
             _uiState.value.backgroundPlayEnabled && currentExoPlayer?.isPlaying == true
         detachPlayerListeners()

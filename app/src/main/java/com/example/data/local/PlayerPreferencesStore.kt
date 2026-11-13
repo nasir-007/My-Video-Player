@@ -10,9 +10,10 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.example.data.model.AspectRatioMode
 import com.example.data.model.DecoderMode
+import com.example.data.model.OrientationMode
 import com.example.data.model.PlaybackPrefs
-import com.example.data.model.PowerProfile
 import com.example.data.model.SubtitleStylePrefs
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -23,11 +24,17 @@ class PlayerPreferencesStore(private val context: Context) {
 
     private object Keys {
         val DEFAULT_DECODER = stringPreferencesKey("default_decoder")
-        val POWER_PROFILE = stringPreferencesKey("power_profile")
+        val DEFAULT_ASPECT = stringPreferencesKey("default_aspect")
+        val DEFAULT_ORIENTATION = stringPreferencesKey("default_orientation")
+        val DEFAULT_SPEED = floatPreferencesKey("default_speed")
         val BACKGROUND_PLAY_ENABLED = booleanPreferencesKey("background_play_enabled")
-        val AUTO_ECO_ON_SAVER = booleanPreferencesKey("auto_eco_on_saver")
         val SEEK_STEP_SECONDS = intPreferencesKey("seek_step_seconds")
         val AUTO_RESUME = booleanPreferencesKey("auto_resume")
+        val GESTURE_BRIGHTNESS = booleanPreferencesKey("gesture_brightness")
+        val GESTURE_VOLUME = booleanPreferencesKey("gesture_volume")
+        val GESTURE_SEEK = booleanPreferencesKey("gesture_seek")
+        val GESTURE_PINCH_ZOOM = booleanPreferencesKey("gesture_pinch_zoom")
+        val GESTURE_DOUBLE_TAP = booleanPreferencesKey("gesture_double_tap")
         val SUB_FONT_SIZE = floatPreferencesKey("sub_font_size")
         val SUB_TEXT_COLOR = longPreferencesKey("sub_text_color")
         val SUB_BG_OPACITY = floatPreferencesKey("sub_bg_opacity")
@@ -36,13 +43,21 @@ class PlayerPreferencesStore(private val context: Context) {
     }
 
     val playbackPrefs: Flow<PlaybackPrefs> = context.kinoXPrefsDataStore.data.map { prefs ->
+        val savedOrientation = prefs[Keys.DEFAULT_ORIENTATION]
         PlaybackPrefs(
             defaultDecoderMode = DecoderMode.fromName(prefs[Keys.DEFAULT_DECODER]),
-            powerProfile = PowerProfile.fromName(prefs[Keys.POWER_PROFILE]),
+            defaultAspectMode = AspectRatioMode.fromName(prefs[Keys.DEFAULT_ASPECT]),
+            defaultOrientationMode = OrientationMode.entries.firstOrNull { it.name == savedOrientation }
+                ?: OrientationMode.AUTO,
+            defaultPlaybackSpeed = (prefs[Keys.DEFAULT_SPEED] ?: 1.0f).coerceIn(0.25f, 3.0f),
             backgroundPlayEnabled = prefs[Keys.BACKGROUND_PLAY_ENABLED] ?: true,
-            autoEcoOnBatterySaver = prefs[Keys.AUTO_ECO_ON_SAVER] ?: true,
-            seekStepSeconds = prefs[Keys.SEEK_STEP_SECONDS] ?: 10,
+            seekStepSeconds = (prefs[Keys.SEEK_STEP_SECONDS] ?: 10).coerceIn(5, 60),
             autoResume = prefs[Keys.AUTO_RESUME] ?: true,
+            brightnessGestureEnabled = prefs[Keys.GESTURE_BRIGHTNESS] ?: true,
+            volumeGestureEnabled = prefs[Keys.GESTURE_VOLUME] ?: true,
+            seekGestureEnabled = prefs[Keys.GESTURE_SEEK] ?: true,
+            pinchZoomEnabled = prefs[Keys.GESTURE_PINCH_ZOOM] ?: true,
+            doubleTapSeekEnabled = prefs[Keys.GESTURE_DOUBLE_TAP] ?: true,
             subtitleStyle = SubtitleStylePrefs(
                 fontSizeSp = prefs[Keys.SUB_FONT_SIZE] ?: 20f,
                 textColorArgb = prefs[Keys.SUB_TEXT_COLOR] ?: 0xFFFFFFFFL,
@@ -57,25 +72,48 @@ class PlayerPreferencesStore(private val context: Context) {
         context.kinoXPrefsDataStore.edit { it[Keys.DEFAULT_DECODER] = mode.name }
     }
 
-    suspend fun updatePowerProfile(profile: PowerProfile) {
-        context.kinoXPrefsDataStore.edit {
-            it[Keys.POWER_PROFILE] = profile.name
-            if (profile == PowerProfile.ECO) {
-                it[Keys.DEFAULT_DECODER] = DecoderMode.HW.name
-            }
-        }
+    suspend fun updateDefaultAspect(mode: AspectRatioMode) {
+        context.kinoXPrefsDataStore.edit { it[Keys.DEFAULT_ASPECT] = mode.name }
+    }
+
+    suspend fun updateDefaultOrientation(mode: OrientationMode) {
+        context.kinoXPrefsDataStore.edit { it[Keys.DEFAULT_ORIENTATION] = mode.name }
+    }
+
+    suspend fun updateDefaultSpeed(speed: Float) {
+        context.kinoXPrefsDataStore.edit { it[Keys.DEFAULT_SPEED] = speed.coerceIn(0.25f, 3.0f) }
+    }
+
+    suspend fun updateSeekStepSeconds(seconds: Int) {
+        context.kinoXPrefsDataStore.edit { it[Keys.SEEK_STEP_SECONDS] = seconds.coerceIn(5, 60) }
     }
 
     suspend fun updateBackgroundPlayEnabled(enabled: Boolean) {
         context.kinoXPrefsDataStore.edit { it[Keys.BACKGROUND_PLAY_ENABLED] = enabled }
     }
 
-    suspend fun updateAutoEcoOnBatterySaver(enabled: Boolean) {
-        context.kinoXPrefsDataStore.edit { it[Keys.AUTO_ECO_ON_SAVER] = enabled }
-    }
-
     suspend fun updateAutoResume(enabled: Boolean) {
         context.kinoXPrefsDataStore.edit { it[Keys.AUTO_RESUME] = enabled }
+    }
+
+    suspend fun updateBrightnessGesture(enabled: Boolean) {
+        context.kinoXPrefsDataStore.edit { it[Keys.GESTURE_BRIGHTNESS] = enabled }
+    }
+
+    suspend fun updateVolumeGesture(enabled: Boolean) {
+        context.kinoXPrefsDataStore.edit { it[Keys.GESTURE_VOLUME] = enabled }
+    }
+
+    suspend fun updateSeekGesture(enabled: Boolean) {
+        context.kinoXPrefsDataStore.edit { it[Keys.GESTURE_SEEK] = enabled }
+    }
+
+    suspend fun updatePinchZoom(enabled: Boolean) {
+        context.kinoXPrefsDataStore.edit { it[Keys.GESTURE_PINCH_ZOOM] = enabled }
+    }
+
+    suspend fun updateDoubleTapSeek(enabled: Boolean) {
+        context.kinoXPrefsDataStore.edit { it[Keys.GESTURE_DOUBLE_TAP] = enabled }
     }
 
     suspend fun updateSubtitleStyle(style: SubtitleStylePrefs) {
@@ -86,5 +124,9 @@ class PlayerPreferencesStore(private val context: Context) {
             prefs[Keys.SUB_OUTLINE] = style.hasOutline
             prefs[Keys.SUB_BOTTOM_MARGIN] = style.bottomMarginPercent
         }
+    }
+
+    suspend fun resetAllToDefaults() {
+        context.kinoXPrefsDataStore.edit { it.clear() }
     }
 }

@@ -126,7 +126,6 @@ fun PlayerScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 surfaceAttachNonce++
-                viewModel.refreshBatteryStatus()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -310,8 +309,15 @@ fun PlayerScreen(
                 modifier = Modifier.fillMaxSize()
             )
 
+            val skipMs = state.seekStepSeconds.coerceIn(5, 60) * 1000L
+
             PlayerGestureOverlay(
                 isLocked = state.isLocked,
+                brightnessGestureEnabled = state.brightnessGestureEnabled,
+                volumeGestureEnabled = state.volumeGestureEnabled,
+                seekGestureEnabled = state.seekGestureEnabled,
+                pinchZoomEnabled = state.pinchZoomEnabled,
+                doubleTapSeekEnabled = state.doubleTapSeekEnabled,
                 durationMs = state.durationMs,
                 currentPositionMs = state.positionMs,
                 currentBrightnessFraction = { brightnessFraction },
@@ -333,9 +339,9 @@ fun PlayerScreen(
                 onClearGestureHud = { viewModel.clearGestureHudSoon() },
                 onSingleTap = viewModel::toggleControlsVisibility,
                 onLockedTap = viewModel::onLockedScreenTap,
-                onDoubleTapLeft = { viewModel.seekBy(-10_000L) },
+                onDoubleTapLeft = { viewModel.seekBy(-skipMs) },
                 onDoubleTapCenter = viewModel::togglePlayPause,
-                onDoubleTapRight = { viewModel.seekBy(10_000L) },
+                onDoubleTapRight = { viewModel.seekBy(skipMs) },
                 onZoomPan = viewModel::updateZoomAndPan,
                 modifier = Modifier.fillMaxSize()
             )
@@ -355,7 +361,7 @@ fun PlayerScreen(
                 onOpenSubtitles = { viewModel.openSheet(PlayerSheetType.SUBTITLES) },
                 onOpenAudioSpeed = { viewModel.openSheet(PlayerSheetType.AUDIO_SPEED) },
                 onOpenDecoderInfo = { viewModel.openSheet(PlayerSheetType.DECODER_INFO) },
-                onOpenPowerBattery = { viewModel.openSheet(PlayerSheetType.POWER_BATTERY) },
+                onOpenSleepTimer = { viewModel.openSheet(PlayerSheetType.SLEEP_TIMER) },
                 onEnterPip = onRequestEnterPip,
                 onToggleLock = viewModel::toggleScreenLock,
                 onCycleAspectRatio = viewModel::cycleAspectRatio,
@@ -382,9 +388,8 @@ fun PlayerScreen(
                 onSelectAudioTrack = viewModel::selectAudioTrack,
                 onSetSpeed = viewModel::setPlaybackSpeed,
                 onToggleBackgroundPlay = viewModel::setBackgroundPlayEnabled,
-                onSelectPowerProfile = viewModel::selectPowerProfile,
                 onSelectSleepTimer = viewModel::setSleepTimer,
-                onOpenBatterySettings = viewModel::openSystemBatterySettings
+                onSetCustomSleepMinutes = viewModel::setCustomSleepMinutes
             )
         }
     }
