@@ -23,6 +23,7 @@ class KinoXPlaybackService : MediaSessionService() {
         mediaSession = KinoXPlayerHolder.getOrCreateMediaSession(applicationContext)
         serviceScope.launch {
             KinoXPlayerHolder.sleepAutoCloseEvents.collect {
+                mediaSession?.player?.pause()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }

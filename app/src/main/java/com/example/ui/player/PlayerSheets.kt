@@ -179,7 +179,9 @@ private fun SleepModeSheetContent(
                         style = MaterialTheme.typography.labelMedium,
                         fontFamily = JetBrainsMonoFontFamily,
                         color = MintSuccess,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                        modifier = Modifier
+                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                            .testTag("player_sleep_countdown_badge")
                     )
                 }
             }
@@ -198,7 +200,8 @@ private fun SleepModeSheetContent(
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = SoftCyanContainer,
                         selectedLabelColor = ElectricCyan
-                    )
+                    ),
+                    modifier = Modifier.testTag("player_sleep_chip_${option.name.lowercase()}")
                 )
             }
         }
@@ -214,6 +217,7 @@ private fun SleepModeSheetContent(
                 modifier = Modifier
                     .weight(1f)
                     .minimumInteractiveComponentSize()
+                    .testTag("player_sleep_sub_5m_button")
             ) {
                 Text("-5 min", color = ElectricCyan)
             }
@@ -222,6 +226,7 @@ private fun SleepModeSheetContent(
                 modifier = Modifier
                     .weight(1f)
                     .minimumInteractiveComponentSize()
+                    .testTag("player_sleep_add_5m_button")
             ) {
                 Text("+5 min", color = ElectricCyan)
             }

@@ -53,6 +53,9 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
       # Skip hardware/Robolectric tests in CI; run pure-JVM unit tests only.
       # External google-services.json is not needed because googleServices uses
       # MissingGoogleServicesStrategy.WARN and googleServices.missing.passthrough=true.

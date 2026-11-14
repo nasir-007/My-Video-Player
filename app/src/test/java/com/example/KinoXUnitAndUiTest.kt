@@ -316,4 +316,82 @@ class KinoXUnitAndUiTest {
         assertEquals(2, nextClicks)
         assertEquals(1, resetClicks)
     }
+
+    @Test
+    fun playerSleepTimerSetsCountdownAndStopsPlaybackService() {
+        KinoXPlayerHolder.setSleepTimer(SleepTimerOption.OFF)
+        var selectedOption: SleepTimerOption? = null
+        var addedMinutes: Int? = null
+        var sheetOpen = false
+
+        val activeTimerState = com.example.player.SleepTimerState(
+            option = SleepTimerOption.MIN_15,
+            remainingSeconds = 900L
+        )
+        val state = com.example.ui.player.PlayerUiState(
+            uriString = "content://media/video1.mp4",
+            title = "Sleep Test.mp4",
+            controlsVisible = true,
+            activeSheet = com.example.ui.player.PlayerSheetType.SLEEP_TIMER,
+            sleepTimer = activeTimerState
+        )
+
+        composeTestRule.setContent {
+            KinoXTheme {
+                com.example.ui.player.PlayerHudOverlays(
+                    state = state,
+                    pipSupported = false,
+                    onBack = {},
+                    onTogglePlayPause = {},
+                    onPreviousVideo = {},
+                    onNextVideo = {},
+                    onResetZoom = {},
+                    onSeekTo = {},
+                    onSeekBy = {},
+                    onCycleDecoder = {},
+                    onToggleBackgroundPlay = {},
+                    onOpenSubtitles = {},
+                    onOpenAudioSpeed = {},
+                    onOpenDecoderInfo = {},
+                    onOpenSleepTimer = { sheetOpen = true },
+                    onEnterPip = {},
+                    onToggleLock = {},
+                    onCycleAspectRatio = {},
+                    onCycleOrientation = {},
+                    onRetry = {},
+                    onSwitchToSw = {}
+                )
+                com.example.ui.player.PlayerBottomSheets(
+                    state = state,
+                    onDismiss = {},
+                    onSelectSubtitleTrack = {},
+                    onDisableSubtitles = {},
+                    onPickExternalSubtitle = {},
+                    onAdjustDelay = {},
+                    onResetDelay = {},
+                    onUpdateSubtitleStyle = {},
+                    onSwitchDecoder = {},
+                    onSelectAudioTrack = {},
+                    onSetSpeed = {},
+                    onToggleBackgroundPlay = {},
+                    onSelectSleepTimer = { selectedOption = it },
+                    onSetCustomSleepMinutes = { addedMinutes = it }
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("player_sleep_button").assertIsDisplayed().performClick()
+        assertTrue(sheetOpen)
+        composeTestRule.onNodeWithTag("player_sleep_countdown_badge").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("player_sleep_chip_min_15").performClick()
+        assertEquals(SleepTimerOption.MIN_15, selectedOption)
+        composeTestRule.onNodeWithTag("player_sleep_add_5m_button").performClick()
+        assertEquals(20, addedMinutes)
+
+        val controller = org.robolectric.Robolectric.buildService(com.example.player.KinoXPlaybackService::class.java).create()
+        val service = controller.get()
+        KinoXPlayerHolder.triggerSleepAutoClose()
+        assertTrue(org.robolectric.Shadows.shadowOf(service).isStoppedBySelf)
+        KinoXPlayerHolder.setSleepTimer(SleepTimerOption.OFF)
+    }
 }

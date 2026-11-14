@@ -72,10 +72,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -166,27 +162,11 @@ fun LibraryScreen(
         }
     }
 
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxSize()
-            .drawBehind {
-                drawRect(color = ObsidianBackground)
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(
-                            Color(0x2400E5FF),
-                            Color.Transparent
-                        ),
-                        center = Offset(size.width * 0.5f, 0f),
-                        radius = size.maxDimension * 0.65f
-                    )
-                )
-            }
-    ) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val isWideScreen = maxWidth >= 700.dp
 
         Scaffold(
-            containerColor = Color.Transparent,
+            containerColor = ObsidianBackground,
             contentWindowInsets = WindowInsets.safeDrawing,
             snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {

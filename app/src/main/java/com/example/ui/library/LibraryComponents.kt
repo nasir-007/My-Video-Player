@@ -1,14 +1,7 @@
 package com.example.ui.library
 
 import android.net.Uri
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -64,7 +57,6 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,7 +67,6 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -119,43 +110,17 @@ fun CinemaHeroHeader(
     videoCount: Int = 0,
     modifier: Modifier = Modifier
 ) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(24.dp))
-            .background(ElevatedSlate)
-            .border(
-                width = 1.dp,
-                brush = Brush.verticalGradient(
-                    colors = listOf(ElectricCyan.copy(alpha = 0.48f), GlassBorder)
-                ),
-                shape = RoundedCornerShape(24.dp)
-            )
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = ElevatedSlate,
+        border = BorderStroke(1.dp, GlassBorder),
+        modifier = modifier.fillMaxWidth()
     ) {
-        Image(
-            painter = painterResource(id = R.drawable.img_cinema_hero),
-            contentDescription = stringResource(R.string.cd_hero_banner),
-            contentScale = ContentScale.Crop,
-            alpha = 0.44f,
-            modifier = Modifier.matchParentSize()
-        )
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0x4D070A0F),
-                            Color(0xE8070A0F)
-                        )
-                    )
-                )
-        )
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -164,32 +129,24 @@ fun CinemaHeroHeader(
             ) {
                 Column(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                    verticalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(38.dp)
-                                .clip(CircleShape)
-                                .background(
-                                    Brush.radialGradient(
-                                        colors = listOf(
-                                            ElectricCyan.copy(alpha = 0.36f),
-                                            SoftCyanContainer
-                                        )
-                                    )
-                                )
-                                .border(1.dp, ElectricCyan.copy(alpha = 0.5f), CircleShape),
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(SoftCyanContainer),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.PlayArrow,
                                 contentDescription = null,
                                 tint = ElectricCyan,
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                         Text(
@@ -199,14 +156,14 @@ fun CinemaHeroHeader(
                         )
                     }
                     val heroSubtitle = if (folderCount > 0 || videoCount > 0) {
-                        "$folderCount folder${if (folderCount == 1) "" else "s"} • $videoCount video${if (videoCount == 1) "" else "s"} • Delay-Less"
+                        "$folderCount folder${if (folderCount == 1) "" else "s"} • $videoCount video${if (videoCount == 1) "" else "s"}"
                     } else {
                         stringResource(R.string.library_subtitle)
                     }
                     Text(
                         text = heroSubtitle,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = ElectricCyan,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TextMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -282,7 +239,6 @@ fun CinemaHeroHeader(
                 SourceQuickChip(
                     icon = Icons.Outlined.CreateNewFolder,
                     label = stringResource(R.string.action_link_folder),
-                    subtitle = "Scan device folders",
                     onClick = onLinkFolder,
                     isHighlighted = false,
                     modifier = Modifier
@@ -292,7 +248,6 @@ fun CinemaHeroHeader(
                 SourceQuickChip(
                     icon = Icons.Outlined.VideoFile,
                     label = stringResource(R.string.action_pick_video),
-                    subtitle = "Add & keep access",
                     onClick = onPickVideo,
                     isHighlighted = true,
                     modifier = Modifier
@@ -308,49 +263,40 @@ fun CinemaHeroHeader(
 private fun SourceQuickChip(
     icon: ImageVector,
     label: String,
-    subtitle: String,
     onClick: () -> Unit,
     isHighlighted: Boolean,
     modifier: Modifier = Modifier
 ) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        color = if (isHighlighted) SoftCyanContainer else CardSlate.copy(alpha = 0.9f),
+        shape = RoundedCornerShape(14.dp),
+        color = if (isHighlighted) SoftCyanContainer else CardSlate,
         border = BorderStroke(
             width = 1.dp,
-            color = if (isHighlighted) ElectricCyan.copy(alpha = 0.55f) else GlassBorder
+            color = if (isHighlighted) ElectricCyan.copy(alpha = 0.45f) else GlassBorder
         ),
         modifier = modifier.minimumInteractiveComponentSize()
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = if (isHighlighted) ElectricCyan else MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(20.dp)
             )
-            Column {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = TextMuted
-                )
-            }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }
@@ -388,20 +334,15 @@ fun BackgroundMiniPlayerBar(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(SoftCyanContainer)
-                    .border(1.dp, ElectricCyan.copy(alpha = 0.45f), CircleShape),
+                    .background(SoftCyanContainer),
                 contentAlignment = Alignment.Center
             ) {
-                if (nowPlaying.isPlaying) {
-                    AnimatedAudioEqualizerBars()
-                } else {
-                    Icon(
-                        imageVector = Icons.Filled.Headphones,
-                        contentDescription = null,
-                        tint = ElectricCyan,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+                Icon(
+                    imageVector = Icons.Filled.Headphones,
+                    contentDescription = null,
+                    tint = ElectricCyan,
+                    modifier = Modifier.size(20.dp)
+                )
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -721,24 +662,6 @@ fun VideoListCard(
                 VideoThumbnail(
                     uriString = video.uriString,
                     modifier = Modifier.fillMaxSize()
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(Color.Transparent, Color(0x99070A0F))
-                            )
-                        )
-                )
-                Icon(
-                    imageVector = Icons.Filled.PlayCircle,
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.85f),
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(5.dp)
-                        .size(18.dp)
                 )
                 if (video.durationMs > 0L) {
                     Surface(
@@ -1069,53 +992,6 @@ fun SectionHeaderWithBadge(
         }
         if (trailingAction != null) {
             trailingAction()
-        }
-    }
-}
-
-@Composable
-private fun AnimatedAudioEqualizerBars() {
-    val transition = rememberInfiniteTransition(label = "mini_eq")
-    val bar1 by transition.animateFloat(
-        initialValue = 0.35f,
-        targetValue = 0.95f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 420, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "eq1"
-    )
-    val bar2 by transition.animateFloat(
-        initialValue = 0.9f,
-        targetValue = 0.3f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 360, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "eq2"
-    )
-    val bar3 by transition.animateFloat(
-        initialValue = 0.45f,
-        targetValue = 1.0f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 500, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "eq3"
-    )
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(2.5.dp),
-        verticalAlignment = Alignment.Bottom,
-        modifier = Modifier.height(16.dp)
-    ) {
-        listOf(bar1, bar2, bar3).forEach { fraction ->
-            Box(
-                modifier = Modifier
-                    .width(3.dp)
-                    .fillMaxHeight(fraction)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(ElectricCyan)
-            )
         }
     }
 }

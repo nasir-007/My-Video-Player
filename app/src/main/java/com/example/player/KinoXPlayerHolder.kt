@@ -106,7 +106,7 @@ object KinoXPlayerHolder {
     private val _sleepTimer = MutableStateFlow(SleepTimerState())
     val sleepTimer: StateFlow<SleepTimerState> = _sleepTimer.asStateFlow()
 
-    private val _sleepAutoCloseEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val _sleepAutoCloseEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 4)
     val sleepAutoCloseEvents: SharedFlow<Unit> = _sleepAutoCloseEvents.asSharedFlow()
 
     private val _playlist = MutableStateFlow(PlaylistState())
@@ -215,6 +215,7 @@ object KinoXPlayerHolder {
         sleepTimerJob?.cancel()
         _sleepTimer.value = SleepTimerState()
         runCatching { progressSaver?.invoke() }
+        exoPlayer?.pause()
         stopAndClearSession()
         disconnectBackgroundService()
         _sleepAutoCloseEvents.tryEmit(Unit)
