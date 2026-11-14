@@ -24,8 +24,11 @@
     <string name="cd_back">Navigate back</string>
     <string name="cd_play">Play</string>
     <string name="cd_pause">Pause</string>
-    <string name="cd_rewind">Rewind 10 seconds</string>
-    <string name="cd_forward">Forward 10 seconds</string>
+    <string name="cd_rewind">Rewind</string>
+    <string name="cd_forward">Forward</string>
+    <string name="cd_previous_video">Previous video</string>
+    <string name="cd_next_video">Next video</string>
+    <string name="cd_reset_zoom">Reset zoom</string>
     <string name="cd_lock_screen">Lock screen controls</string>
     <string name="cd_unlock_screen">Unlock screen controls</string>
     <string name="cd_pip">Enter Picture-in-Picture</string>

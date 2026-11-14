@@ -105,6 +105,9 @@ data class PlayerUiState(
     val subtitleDelayMs: Long = 0L,
     val subtitleStyle: SubtitleStylePrefs = SubtitleStylePrefs(),
     val activeSubtitleText: String? = null,
+    val hasPreviousVideo: Boolean = false,
+    val hasNextVideo: Boolean = false,
+    val nextVideoTitle: String? = null,
     val codecTelemetry: CodecTelemetry = CodecTelemetry(),
     val errorMessage: String? = null,
     val playerInstanceVersion: Int = 0
@@ -156,6 +159,17 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             KinoXPlayerHolder.sleepTimer.collect { sleep ->
                 _uiState.update { it.copy(sleepTimer = sleep) }
+            }
+        }
+        viewModelScope.launch {
+            KinoXPlayerHolder.playlist.collect { queue ->
+                _uiState.update {
+                    it.copy(
+                        hasPreviousVideo = queue.hasPrevious,
+                        hasNextVideo = queue.hasNext,
+                        nextVideoTitle = queue.nextTitle
+                    )
+                }
             }
         }
     }
@@ -271,6 +285,20 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 externalCues = emptyList()
             }
 
+            if (KinoXPlayerHolder.playlist.value.items.none { it.uriString == uriString }) {
+                val queue = when {
+                    !folderUri.isNullOrBlank() -> repository.scanFolderVideos(folderUri)
+                    else -> {
+                        val folderVideos = repository.scanAllPinnedFoldersVideos()
+                        val hist = repository.getAllHistoryVideos()
+                        (hist + folderVideos).distinctBy { it.uriString }
+                    }
+                }
+                if (queue.isNotEmpty()) {
+                    KinoXPlayerHolder.setPlaylist(queue, uriString)
+                }
+            }
+
             buildAndPreparePlayer(
                 uriString = uriString,
                 title = title,
@@ -365,6 +393,12 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                     isBuffering = playbackState == Player.STATE_BUFFERING,
                     durationMs = player.duration.coerceAtLeast(0L)
                 )
+            }
+            if (playbackState == Player.STATE_ENDED &&
+                KinoXPlayerHolder.sleepTimer.value.option != SleepTimerOption.END_OF_VIDEO &&
+                KinoXPlayerHolder.playlist.value.hasNext
+            ) {
+                playNextVideo()
             }
         }
 
@@ -620,6 +654,71 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    fun playNextVideo() {
+        val nextItem = KinoXPlayerHolder.stepPlaylist(1) ?: return
+        switchToPlaylistItem(nextItem)
+    }
+
+    fun playPreviousVideo() {
+        val prevItem = KinoXPlayerHolder.stepPlaylist(-1) ?: return
+        switchToPlaylistItem(prevItem)
+    }
+
+    private fun switchToPlaylistItem(target: com.example.data.model.VideoItem) {
+        persistProgress()
+        viewModelScope.launch {
+            val app = getApplication<Application>()
+            val prefs = repository.playbackPrefs.first()
+            val history = repository.getVideoHistoryByUri(target.uriString)
+            val resolvedDecoder = when {
+                BatteryOptimizer.isSystemPowerSaveActive(app) -> DecoderMode.HW
+                history != null -> history.decoderMode
+                else -> target.decoderMode
+            }
+            val resolvedAspect = history?.aspectMode ?: target.aspectMode
+            val resolvedSubUri = target.externalSubtitleUri ?: history?.externalSubtitleUri
+            val resolvedDelay = history?.subtitleDelayMs ?: target.subtitleDelayMs
+            val resumePosition = if (prefs.autoResume && history != null && history.lastPositionMs > 2000L) {
+                if (history.durationMs > 0L && history.lastPositionMs > history.durationMs - 5000L) 0L
+                else history.lastPositionMs
+            } else 0L
+
+            embeddedCueText = null
+            _uiState.update {
+                it.copy(
+                    uriString = target.uriString,
+                    title = target.title,
+                    folderUri = target.folderUri ?: it.folderUri,
+                    decoderMode = resolvedDecoder,
+                    aspectMode = resolvedAspect,
+                    externalSubtitleUri = resolvedSubUri,
+                    externalSubtitleName = resolvedSubUri?.let(::resolveDisplayName),
+                    subtitleDelayMs = resolvedDelay,
+                    activeSubtitleText = null,
+                    errorMessage = null,
+                    zoomScale = 1.0f,
+                    panX = 0f,
+                    panY = 0f
+                )
+            }
+
+            if (resolvedSubUri != null) {
+                loadExternalSubtitles(resolvedSubUri)
+            } else {
+                externalCues = emptyList()
+            }
+
+            buildAndPreparePlayer(
+                uriString = target.uriString,
+                title = target.title,
+                decoderMode = resolvedDecoder,
+                seekToMs = resumePosition,
+                playWhenReady = true
+            )
+            showTransientGestureHud(GestureHudState.Toast(target.title))
+        }
+    }
+
     fun switchDecoderMode(newMode: DecoderMode) {
         val state = _uiState.value
         if (state.decoderMode == newMode && state.errorMessage == null) return
@@ -764,9 +863,9 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     fun updateZoomAndPan(scaleDelta: Float, panDeltaX: Float, panYDelta: Float) {
         _uiState.update { state ->
-            val newScale = (state.zoomScale * scaleDelta).coerceIn(1.0f, 3.0f)
-            val newPanX = if (newScale <= 1.02f) 0f else (state.panX + panDeltaX).coerceIn(-600f, 600f)
-            val newPanY = if (newScale <= 1.02f) 0f else (state.panY + panYDelta).coerceIn(-600f, 600f)
+            val newScale = (state.zoomScale * scaleDelta).coerceIn(1.0f, 4.0f)
+            val newPanX = if (newScale <= 1.02f) 0f else (state.panX + panDeltaX).coerceIn(-2200f, 2200f)
+            val newPanY = if (newScale <= 1.02f) 0f else (state.panY + panYDelta).coerceIn(-2200f, 2200f)
             state.copy(
                 zoomScale = newScale,
                 panX = newPanX,
@@ -779,6 +878,18 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             delay(800L)
             _uiState.update { it.copy(gestureHud = null) }
         }
+    }
+
+    fun resetZoom() {
+        _uiState.update {
+            it.copy(
+                zoomScale = 1.0f,
+                panX = 0f,
+                panY = 0f,
+                gestureHud = GestureHudState.Zoom(1.0f)
+            )
+        }
+        clearGestureHudSoon(700L)
     }
 
     fun showBrightnessHud(percent: Int) {

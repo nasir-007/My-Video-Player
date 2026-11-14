@@ -1,18 +1,26 @@
 package com.example.ui.library
 
 import android.net.Uri
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -56,6 +64,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -106,6 +115,8 @@ fun CinemaHeroHeader(
     onOpenSleepMode: () -> Unit,
     onLinkFolder: () -> Unit,
     onPickVideo: () -> Unit,
+    folderCount: Int = 0,
+    videoCount: Int = 0,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -113,6 +124,13 @@ fun CinemaHeroHeader(
             .fillMaxWidth()
             .clip(RoundedCornerShape(24.dp))
             .background(ElevatedSlate)
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    colors = listOf(ElectricCyan.copy(alpha = 0.48f), GlassBorder)
+                ),
+                shape = RoundedCornerShape(24.dp)
+            )
     ) {
         Image(
             painter = painterResource(id = R.drawable.img_cinema_hero),
@@ -128,7 +146,7 @@ fun CinemaHeroHeader(
                     Brush.verticalGradient(
                         colors = listOf(
                             Color(0x4D070A0F),
-                            Color(0xE0070A0F)
+                            Color(0xE8070A0F)
                         )
                     )
                 )
@@ -144,16 +162,27 @@ fun CinemaHeroHeader(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(36.dp)
+                                .size(38.dp)
                                 .clip(CircleShape)
-                                .background(SoftCyanContainer),
+                                .background(
+                                    Brush.radialGradient(
+                                        colors = listOf(
+                                            ElectricCyan.copy(alpha = 0.36f),
+                                            SoftCyanContainer
+                                        )
+                                    )
+                                )
+                                .border(1.dp, ElectricCyan.copy(alpha = 0.5f), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -169,10 +198,17 @@ fun CinemaHeroHeader(
                             color = MaterialTheme.colorScheme.onBackground
                         )
                     }
+                    val heroSubtitle = if (folderCount > 0 || videoCount > 0) {
+                        "$folderCount folder${if (folderCount == 1) "" else "s"} • $videoCount video${if (videoCount == 1) "" else "s"} • Delay-Less"
+                    } else {
+                        stringResource(R.string.library_subtitle)
+                    }
                     Text(
-                        text = stringResource(R.string.library_subtitle),
+                        text = heroSubtitle,
                         style = MaterialTheme.typography.labelSmall,
-                        color = ElectricCyan
+                        color = ElectricCyan,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
@@ -256,7 +292,7 @@ fun CinemaHeroHeader(
                 SourceQuickChip(
                     icon = Icons.Outlined.VideoFile,
                     label = stringResource(R.string.action_pick_video),
-                    subtitle = "Instant video picker",
+                    subtitle = "Add & keep access",
                     onClick = onPickVideo,
                     isHighlighted = true,
                     modifier = Modifier
@@ -352,15 +388,20 @@ fun BackgroundMiniPlayerBar(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(CircleShape)
-                    .background(SoftCyanContainer),
+                    .background(SoftCyanContainer)
+                    .border(1.dp, ElectricCyan.copy(alpha = 0.45f), CircleShape),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Filled.Headphones,
-                    contentDescription = null,
-                    tint = ElectricCyan,
-                    modifier = Modifier.size(20.dp)
-                )
+                if (nowPlaying.isPlaying) {
+                    AnimatedAudioEqualizerBars()
+                } else {
+                    Icon(
+                        imageVector = Icons.Filled.Headphones,
+                        contentDescription = null,
+                        tint = ElectricCyan,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -681,6 +722,24 @@ fun VideoListCard(
                     uriString = video.uriString,
                     modifier = Modifier.fillMaxSize()
                 )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(Color.Transparent, Color(0x99070A0F))
+                            )
+                        )
+                )
+                Icon(
+                    imageVector = Icons.Filled.PlayCircle,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(5.dp)
+                        .size(18.dp)
+                )
                 if (video.durationMs > 0L) {
                     Surface(
                         color = Color(0xCC070A0F),
@@ -692,8 +751,9 @@ fun VideoListCard(
                         Text(
                             text = formatDuration(video.durationMs),
                             style = MaterialTheme.typography.labelSmall,
+                            fontFamily = JetBrainsMonoFontFamily,
                             color = Color.White,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                         )
                     }
                 }
@@ -968,5 +1028,94 @@ internal fun SettingToggleRow(
             ),
             modifier = Modifier.testTag(testTag)
         )
+    }
+}
+
+@Composable
+fun SectionHeaderWithBadge(
+    title: String,
+    count: Int,
+    modifier: Modifier = Modifier,
+    trailingAction: (@Composable () -> Unit)? = null
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onBackground
+            )
+            Surface(
+                shape = RoundedCornerShape(50),
+                color = SoftCyanContainer,
+                border = BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.4f))
+            ) {
+                Text(
+                    text = count.toString(),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = JetBrainsMonoFontFamily,
+                    color = ElectricCyan,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                )
+            }
+        }
+        if (trailingAction != null) {
+            trailingAction()
+        }
+    }
+}
+
+@Composable
+private fun AnimatedAudioEqualizerBars() {
+    val transition = rememberInfiniteTransition(label = "mini_eq")
+    val bar1 by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.95f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 420, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "eq1"
+    )
+    val bar2 by transition.animateFloat(
+        initialValue = 0.9f,
+        targetValue = 0.3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 360, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "eq2"
+    )
+    val bar3 by transition.animateFloat(
+        initialValue = 0.45f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "eq3"
+    )
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(2.5.dp),
+        verticalAlignment = Alignment.Bottom,
+        modifier = Modifier.height(16.dp)
+    ) {
+        listOf(bar1, bar2, bar3).forEach { fraction ->
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .fillMaxHeight(fraction)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(ElectricCyan)
+            )
+        }
     }
 }

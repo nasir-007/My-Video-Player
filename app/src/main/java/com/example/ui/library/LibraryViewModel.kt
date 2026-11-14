@@ -56,6 +56,7 @@ private data class LibraryControlState(
     val searchQuery: String = "",
     val activeFolder: FolderItem? = null,
     val activeFolderVideos: List<VideoItem> = emptyList(),
+    val folderLibraryVideos: List<VideoItem> = emptyList(),
     val isScanningFolder: Boolean = false,
     val folderCounts: Map<String, Int> = emptyMap(),
     val statusMessage: String? = null
@@ -96,7 +97,12 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
             .filter { query.isEmpty() || it.title.lowercase().contains(query) }
             .take(10)
 
-        val localVideos = history
+        val historyByUri = history.associateBy { it.uriString }
+        val mergedFolderVideos = controls.folderLibraryVideos.map { folderVid ->
+            historyByUri[folderVid.uriString] ?: folderVid
+        }
+        val localVideos = (history + mergedFolderVideos)
+            .distinctBy { it.uriString }
             .filter { query.isEmpty() || it.title.lowercase().contains(query) }
 
         val enrichedFolders = folders
@@ -326,12 +332,20 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
-    fun handlePickedVideo(uri: Uri, onReadyToPlay: (VideoItem) -> Unit) {
+    fun handlePickedVideos(uris: List<Uri>, onReadyToPlay: (VideoItem, List<VideoItem>) -> Unit) {
+        if (uris.isEmpty()) return
         viewModelScope.launch {
             runCatching {
-                repository.registerPickedVideo(uri)
-            }.onSuccess { item ->
-                onReadyToPlay(item)
+                repository.registerPickedVideos(uris)
+            }.onSuccess { items ->
+                val first = items.firstOrNull()
+                if (first != null) {
+                    onReadyToPlay(first, items)
+                } else {
+                    controlState.update {
+                        it.copy(statusMessage = "Could not open selected video")
+                    }
+                }
             }.onFailure { err ->
                 controlState.update {
                     it.copy(statusMessage = err.message ?: "Could not open selected video")
@@ -350,10 +364,18 @@ class LibraryViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             repository.pinnedFolders.collect { folders ->
                 val counts = mutableMapOf<String, Int>()
+                val allScanned = mutableListOf<VideoItem>()
                 folders.forEach { folder ->
-                    counts[folder.treeUriString] = repository.countFolderVideos(folder.treeUriString)
+                    val videos = repository.scanFolderVideos(folder.treeUriString)
+                    counts[folder.treeUriString] = videos.size
+                    allScanned += videos
                 }
-                controlState.update { it.copy(folderCounts = counts) }
+                controlState.update {
+                    it.copy(
+                        folderCounts = counts,
+                        folderLibraryVideos = allScanned.distinctBy { v -> v.uriString }
+                    )
+                }
             }
         }
     }

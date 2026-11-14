@@ -7,6 +7,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,10 +42,13 @@ import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay10
 import androidx.compose.material.icons.filled.ScreenRotation
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Subtitles
 import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material.icons.filled.ZoomIn
+import androidx.compose.material.icons.filled.ZoomOutMap
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -146,6 +150,9 @@ fun PlayerHudOverlays(
     pipSupported: Boolean,
     onBack: () -> Unit,
     onTogglePlayPause: () -> Unit,
+    onPreviousVideo: () -> Unit,
+    onNextVideo: () -> Unit,
+    onResetZoom: () -> Unit,
     onSeekTo: (Long) -> Unit,
     onSeekBy: (Long) -> Unit,
     onCycleDecoder: () -> Unit,
@@ -413,16 +420,39 @@ fun PlayerHudOverlays(
                 val skipDeltaMs = state.seekStepSeconds.coerceIn(5, 60) * 1000L
                 Row(
                     modifier = Modifier.align(Alignment.Center),
-                    horizontalArrangement = Arrangement.spacedBy(28.dp),
+                    horizontalArrangement = Arrangement.spacedBy(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    Surface(
+                        onClick = onPreviousVideo,
+                        enabled = state.hasPreviousVideo,
+                        shape = CircleShape,
+                        color = if (state.hasPreviousVideo) GlassOverlay else GlassOverlay.copy(alpha = 0.45f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (state.hasPreviousVideo) GlassBorder else GlassBorder.copy(alpha = 0.3f)
+                        ),
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("player_previous_button")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.SkipPrevious,
+                                contentDescription = stringResource(R.string.cd_previous_video),
+                                tint = if (state.hasPreviousVideo) Color.White else Color.White.copy(alpha = 0.35f),
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                    }
+
                     Surface(
                         onClick = { onSeekBy(-skipDeltaMs) },
                         shape = CircleShape,
                         color = GlassOverlay,
                         border = BorderStroke(1.dp, GlassBorder),
                         modifier = Modifier
-                            .size(54.dp)
+                            .size(52.dp)
                             .testTag("player_rewind_button")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
@@ -430,7 +460,7 @@ fun PlayerHudOverlays(
                                 imageVector = Icons.Filled.Replay10,
                                 contentDescription = stringResource(R.string.cd_rewind),
                                 tint = Color.White,
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(26.dp)
                             )
                         }
                     }
@@ -440,7 +470,7 @@ fun PlayerHudOverlays(
                         shape = CircleShape,
                         color = ElectricCyan,
                         modifier = Modifier
-                            .size(68.dp)
+                            .size(64.dp)
                             .testTag("player_play_pause_button")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
@@ -450,7 +480,7 @@ fun PlayerHudOverlays(
                                     if (state.isPlaying) R.string.cd_pause else R.string.cd_play
                                 ),
                                 tint = ObsidianBackground,
-                                modifier = Modifier.size(36.dp)
+                                modifier = Modifier.size(34.dp)
                             )
                         }
                     }
@@ -461,7 +491,7 @@ fun PlayerHudOverlays(
                         color = GlassOverlay,
                         border = BorderStroke(1.dp, GlassBorder),
                         modifier = Modifier
-                            .size(54.dp)
+                            .size(52.dp)
                             .testTag("player_forward_button")
                     ) {
                         Box(contentAlignment = Alignment.Center) {
@@ -469,7 +499,30 @@ fun PlayerHudOverlays(
                                 imageVector = Icons.Filled.Forward10,
                                 contentDescription = stringResource(R.string.cd_forward),
                                 tint = Color.White,
-                                modifier = Modifier.size(28.dp)
+                                modifier = Modifier.size(26.dp)
+                            )
+                        }
+                    }
+
+                    Surface(
+                        onClick = onNextVideo,
+                        enabled = state.hasNextVideo,
+                        shape = CircleShape,
+                        color = if (state.hasNextVideo) GlassOverlay else GlassOverlay.copy(alpha = 0.45f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (state.hasNextVideo) GlassBorder else GlassBorder.copy(alpha = 0.3f)
+                        ),
+                        modifier = Modifier
+                            .size(48.dp)
+                            .testTag("player_next_button")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Filled.SkipNext,
+                                contentDescription = stringResource(R.string.cd_next_video),
+                                tint = if (state.hasNextVideo) Color.White else Color.White.copy(alpha = 0.35f),
+                                modifier = Modifier.size(26.dp)
                             )
                         }
                     }
@@ -489,10 +542,56 @@ fun PlayerHudOverlays(
                         .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    if (state.hasNextVideo && !state.nextVideoTitle.isNullOrBlank()) {
+                        Surface(
+                            onClick = onNextVideo,
+                            shape = RoundedCornerShape(50),
+                            color = GlassOverlay,
+                            border = BorderStroke(1.dp, GlassBorder),
+                            modifier = Modifier
+                                .align(Alignment.End)
+                                .minimumInteractiveComponentSize()
+                                .testTag("player_up_next_pill")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "NEXT",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = ElectricCyan,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = state.nextVideoTitle,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.width(160.dp)
+                                )
+                                Icon(
+                                    imageVector = Icons.Filled.SkipNext,
+                                    contentDescription = stringResource(R.string.cd_next_video),
+                                    tint = ElectricCyan,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
+                        }
+                    }
+
                     var isDraggingSlider by remember { mutableStateOf(false) }
                     var sliderValueMs by remember { mutableFloatStateOf(0f) }
+                    var showRemainingTime by remember { mutableStateOf(false) }
                     val durationFloat = state.durationMs.coerceAtLeast(1L).toFloat()
                     val displayPosMs = if (isDraggingSlider) sliderValueMs.toLong() else state.positionMs
+                    val rightTimeLabel = if (showRemainingTime && state.durationMs > 0L) {
+                        "-${formatDuration((state.durationMs - displayPosMs).coerceAtLeast(0L))}"
+                    } else {
+                        formatDuration(state.durationMs)
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -526,10 +625,15 @@ fun PlayerHudOverlays(
                                 .testTag("player_seek_slider")
                         )
                         Text(
-                            text = formatDuration(state.durationMs),
+                            text = rightTimeLabel,
                             style = MaterialTheme.typography.labelMedium,
                             fontFamily = JetBrainsMonoFontFamily,
-                            color = TextMuted
+                            color = if (showRemainingTime) ElectricCyan else TextMuted,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable { showRemainingTime = !showRemainingTime }
+                                .padding(horizontal = 4.dp, vertical = 4.dp)
+                                .testTag("player_duration_toggle")
                         )
                     }
 
@@ -605,6 +709,37 @@ fun PlayerHudOverlays(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
+                            if (state.zoomScale > 1.05f) {
+                                Surface(
+                                    onClick = onResetZoom,
+                                    shape = RoundedCornerShape(50),
+                                    color = SoftCyanContainer,
+                                    border = BorderStroke(1.dp, ElectricCyan.copy(alpha = 0.7f)),
+                                    modifier = Modifier
+                                        .minimumInteractiveComponentSize()
+                                        .testTag("player_reset_zoom_button")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Filled.ZoomOutMap,
+                                            contentDescription = stringResource(R.string.cd_reset_zoom),
+                                            tint = ElectricCyan,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Text(
+                                            text = String.format(Locale.US, "%.1fx • Reset", state.zoomScale),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = ElectricCyan,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+
                             Surface(
                                 onClick = onCycleDecoder,
                                 shape = RoundedCornerShape(50),

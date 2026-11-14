@@ -171,6 +171,12 @@ class MainActivity : ComponentActivity() {
     private fun extractExternalVideoIntent(intent: Intent?) {
         if (intent?.action != Intent.ACTION_VIEW) return
         val data: Uri = intent.data ?: return
+        runCatching {
+            contentResolver.takePersistableUriPermission(
+                data,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        }
         val title = runCatching {
             contentResolver.query(data, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
                 if (c.moveToFirst()) {

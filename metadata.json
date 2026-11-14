@@ -1,6 +1,6 @@
 {
   "name": "KinoX",
-  "description": "Local Android video player with gesture controls, embedded & external SRT/VTT subtitles, HW/HW+/SW decoders, background MediaSessionService playback, and battery optimization profiles.",
+  "description": "Local Android video player with MX-style gesture controls, embedded & external SRT/VTT subtitles, HW/HW+/SW decoders, background MediaSessionService playback, always-on battery optimization, and Sleeping Time Mode auto-close.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

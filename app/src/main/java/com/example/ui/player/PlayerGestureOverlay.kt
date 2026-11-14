@@ -12,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -50,6 +51,8 @@ fun PlayerGestureOverlay(
     var startVolume by remember { mutableFloatStateOf(0.5f) }
     var startSeekPosMs by remember { mutableLongStateOf(0L) }
     var pendingSeekTargetMs by remember { mutableLongStateOf(0L) }
+    val latestDurationMs by rememberUpdatedState(durationMs)
+    val latestPositionMs by rememberUpdatedState(currentPositionMs)
 
     Box(
         modifier = modifier
@@ -97,8 +100,8 @@ fun PlayerGestureOverlay(
 
                     startBrightness = currentBrightnessFraction()
                     startVolume = currentVolumeFraction()
-                    startSeekPosMs = currentPositionMs
-                    pendingSeekTargetMs = currentPositionMs
+                    startSeekPosMs = latestPositionMs
+                    pendingSeekTargetMs = latestPositionMs
 
                     while (true) {
                         val event = awaitPointerEvent()
@@ -154,10 +157,11 @@ fun PlayerGestureOverlay(
                             DragAxis.HORIZONTAL_SEEK -> {
                                 change.consume()
                                 val widthPx = size.width.coerceAtLeast(1).toFloat()
-                                val spanMs = if (durationMs in 1L..120_000L) durationMs else 120_000L
+                                val durMs = latestDurationMs
+                                val spanMs = if (durMs in 1L..120_000L) durMs else 120_000L
                                 val seekDeltaMs = ((cumulativeDx / widthPx) * spanMs).toLong()
-                                val target = if (durationMs > 0L) {
-                                    (startSeekPosMs + seekDeltaMs).coerceIn(0L, durationMs)
+                                val target = if (durMs > 0L) {
+                                    (startSeekPosMs + seekDeltaMs).coerceIn(0L, durMs)
                                 } else {
                                     (startSeekPosMs + seekDeltaMs).coerceAtLeast(0L)
                                 }

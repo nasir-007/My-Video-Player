@@ -6,8 +6,9 @@ import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import com.example.player.KinoXPlayerHolder
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -32,6 +33,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Movie
@@ -70,6 +72,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -116,12 +122,21 @@ fun LibraryScreen(
         }
     }
 
-    val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.PickVisualMedia()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            viewModel.handlePickedVideo(uri) { video ->
-                onPlayVideo(video.uriString, video.title, video.externalSubtitleUri, video.folderUri)
+    val videoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris: List<Uri> ->
+        if (uris.isNotEmpty()) {
+            viewModel.handlePickedVideos(uris) { firstVideo, pickedQueue ->
+                val currentLocal = (viewModel.uiState.value as? LibraryUiState.Ready)?.localVideos ?: emptyList()
+                val combinedQueue = (pickedQueue + currentLocal)
+                    .distinctBy { it.uriString }
+                KinoXPlayerHolder.setPlaylist(combinedQueue, firstVideo.uriString)
+                onPlayVideo(
+                    firstVideo.uriString,
+                    firstVideo.title,
+                    firstVideo.externalSubtitleUri,
+                    firstVideo.folderUri
+                )
             }
         }
     }
@@ -151,11 +166,27 @@ fun LibraryScreen(
         }
     }
 
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxSize()
+            .drawBehind {
+                drawRect(color = ObsidianBackground)
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            Color(0x2400E5FF),
+                            Color.Transparent
+                        ),
+                        center = Offset(size.width * 0.5f, 0f),
+                        radius = size.maxDimension * 0.65f
+                    )
+                )
+            }
+    ) {
         val isWideScreen = maxWidth >= 700.dp
 
         Scaffold(
-            containerColor = ObsidianBackground,
+            containerColor = Color.Transparent,
             contentWindowInsets = WindowInsets.safeDrawing,
             snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {
@@ -271,15 +302,19 @@ fun LibraryScreen(
                                 onOpenSleepMode = { showSleepSheet = true },
                                 onLinkFolder = { folderPickerLauncher.launch(null) },
                                 onPickVideo = {
-                                    photoPickerLauncher.launch(
-                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly)
-                                    )
+                                    videoPickerLauncher.launch(arrayOf("video/*"))
                                 },
                                 onSearchChange = viewModel::updateSearchQuery,
                                 onOpenFolder = viewModel::openFolder,
                                 onCloseFolder = viewModel::closeFolder,
                                 onUnpinFolder = viewModel::unpinFolder,
                                 onPlayVideoItem = { video ->
+                                    val queue = if (ui.activeFolder != null && ui.activeFolderVideos.isNotEmpty()) {
+                                        ui.activeFolderVideos
+                                    } else {
+                                        ui.localVideos
+                                    }
+                                    KinoXPlayerHolder.setPlaylist(queue, video.uriString)
                                     onPlayVideo(
                                         video.uriString,
                                         video.title,
@@ -363,6 +398,7 @@ private fun LibraryContent(
     onResetSettings: () -> Unit
 ) {
     val columns = if (isWideScreen) 2 else 1
+    var sortAlphabetically by remember { mutableStateOf(false) }
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(columns),
@@ -381,7 +417,9 @@ private fun LibraryContent(
                     onCycleDecoder = onCycleDecoder,
                     onOpenSleepMode = onOpenSleepMode,
                     onLinkFolder = onLinkFolder,
-                    onPickVideo = onPickVideo
+                    onPickVideo = onPickVideo,
+                    folderCount = state.pinnedFolders.size,
+                    videoCount = state.localVideos.size
                 )
             }
 
@@ -489,9 +527,9 @@ private fun LibraryContent(
                     }
                 } else {
                     item(span = { GridItemSpan(columns) }) {
-                        Text(
-                            text = stringResource(R.string.section_pinned_folders),
-                            style = MaterialTheme.typography.titleMedium
+                        SectionHeaderWithBadge(
+                            title = stringResource(R.string.section_pinned_folders),
+                            count = state.pinnedFolders.size
                         )
                     }
                     if (state.pinnedFolders.isEmpty()) {
@@ -518,13 +556,53 @@ private fun LibraryContent(
             }
 
             LibraryTab.VIDEOS -> {
+                val displayedVideos = if (sortAlphabetically) {
+                    state.localVideos.sortedBy { it.title.lowercase() }
+                } else {
+                    state.localVideos
+                }
                 item(span = { GridItemSpan(columns) }) {
-                    Text(
-                        text = stringResource(R.string.section_local_videos),
-                        style = MaterialTheme.typography.titleMedium
+                    SectionHeaderWithBadge(
+                        title = stringResource(R.string.section_local_videos),
+                        count = displayedVideos.size,
+                        trailingAction = if (displayedVideos.size > 1) {
+                            {
+                                Surface(
+                                    onClick = { sortAlphabetically = !sortAlphabetically },
+                                    shape = RoundedCornerShape(50),
+                                    color = if (sortAlphabetically) SoftCyanContainer else ElevatedSlate,
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (sortAlphabetically) ElectricCyan.copy(alpha = 0.55f) else GlassBorder
+                                    ),
+                                    modifier = Modifier
+                                        .minimumInteractiveComponentSize()
+                                        .testTag("videos_sort_toggle")
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.Sort,
+                                            contentDescription = null,
+                                            tint = ElectricCyan,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Text(
+                                            text = if (sortAlphabetically) "A–Z" else "Recent",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (sortAlphabetically) ElectricCyan else TextMuted,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+                            }
+                        } else null
                     )
                 }
-                if (state.localVideos.isEmpty()) {
+                if (displayedVideos.isEmpty()) {
                     item(span = { GridItemSpan(columns) }) {
                         EmptyLibraryCard(
                             title = "No Local Videos Yet",
@@ -536,7 +614,7 @@ private fun LibraryContent(
                         )
                     }
                 } else {
-                    items(state.localVideos, key = { it.uriString }) { video ->
+                    items(displayedVideos, key = { it.uriString }) { video ->
                         VideoListCard(
                             video = video,
                             onClick = { onPlayVideoItem(video) },

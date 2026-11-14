@@ -19,6 +19,7 @@ import androidx.media3.session.SessionToken
 import com.example.MainActivity
 import com.example.data.model.DecoderMode
 import com.example.data.model.SleepTimerOption
+import com.example.data.model.VideoItem
 import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.CoroutineScope
@@ -62,6 +63,15 @@ data class SleepTimerState(
         }
 }
 
+data class PlaylistState(
+    val items: List<VideoItem> = emptyList(),
+    val currentIndex: Int = -1
+) {
+    val hasPrevious: Boolean get() = currentIndex > 0 && items.isNotEmpty()
+    val hasNext: Boolean get() = currentIndex >= 0 && currentIndex < items.lastIndex
+    val nextTitle: String? get() = items.getOrNull(currentIndex + 1)?.title
+}
+
 object KinoXPlayerHolder {
 
     private val holderScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -99,8 +109,28 @@ object KinoXPlayerHolder {
     private val _sleepAutoCloseEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val sleepAutoCloseEvents: SharedFlow<Unit> = _sleepAutoCloseEvents.asSharedFlow()
 
+    private val _playlist = MutableStateFlow(PlaylistState())
+    val playlist: StateFlow<PlaylistState> = _playlist.asStateFlow()
+
     private var controllerFuture: ListenableFuture<MediaController>? = null
     private var sleepTimerJob: Job? = null
+
+    fun setPlaylist(items: List<VideoItem>, activeUriString: String) {
+        if (items.isEmpty()) return
+        val idx = items.indexOfFirst { it.uriString == activeUriString }
+        _playlist.value = PlaylistState(
+            items = items,
+            currentIndex = if (idx >= 0) idx else 0
+        )
+    }
+
+    fun stepPlaylist(delta: Int): VideoItem? {
+        val current = _playlist.value
+        val targetIdx = current.currentIndex + delta
+        val target = current.items.getOrNull(targetIdx) ?: return null
+        _playlist.value = current.copy(currentIndex = targetIdx)
+        return target
+    }
 
     fun registerProgressSaver(saver: (() -> Unit)?) {
         progressSaver = saver
@@ -109,6 +139,11 @@ object KinoXPlayerHolder {
     fun updateNowPlayingMetadata(uriString: String, title: String) {
         currentUriString = uriString
         currentTitle = title
+        val currentQueue = _playlist.value
+        val matchedIdx = currentQueue.items.indexOfFirst { it.uriString == uriString }
+        if (matchedIdx >= 0 && matchedIdx != currentQueue.currentIndex) {
+            _playlist.value = currentQueue.copy(currentIndex = matchedIdx)
+        }
         _nowPlaying.value = NowPlayingSnapshot(
             uriString = uriString,
             title = title,

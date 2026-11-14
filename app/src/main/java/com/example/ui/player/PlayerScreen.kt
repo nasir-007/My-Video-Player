@@ -17,7 +17,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -32,11 +31,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
@@ -215,14 +214,13 @@ fun PlayerScreen(
             16f / 9f
         }
 
-        val (surfaceWidth, surfaceHeight) = remember(
+        val (baseWidth, baseHeight) = remember(
             containerWidth,
             containerHeight,
             rawVideoRatio,
-            state.aspectMode,
-            state.zoomScale
+            state.aspectMode
         ) {
-            val baseSize = when (state.aspectMode) {
+            when (state.aspectMode) {
                 AspectRatioMode.STRETCH -> containerWidth to containerHeight
                 AspectRatioMode.FIT -> {
                     if (rawVideoRatio > containerRatio) {
@@ -255,16 +253,24 @@ fun PlayerScreen(
                     }
                 }
             }
-            (baseSize.first * state.zoomScale) to (baseSize.second * state.zoomScale)
         }
 
-        val useSurfaceView = state.decoderMode == DecoderMode.HW && state.zoomScale <= 1.02f
+        // Use TextureView whenever pinch-to-zoom is enabled or zoomed so GPU graphicsLayer transforms
+        // scale smoothly up to 4.0x without mid-gesture SurfaceView recreation flicker.
+        val useSurfaceView = state.decoderMode == DecoderMode.HW &&
+            !state.pinchZoomEnabled &&
+            state.zoomScale <= 1.01f
 
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
-                .size(surfaceWidth, surfaceHeight)
-                .offset { IntOffset(state.panX.roundToInt(), state.panY.roundToInt()) }
+                .size(baseWidth, baseHeight)
+                .graphicsLayer {
+                    scaleX = state.zoomScale
+                    scaleY = state.zoomScale
+                    translationX = state.panX
+                    translationY = state.panY
+                }
         ) {
             key(state.playerInstanceVersion, useSurfaceView, surfaceAttachNonce) {
                 val player = viewModel.currentExoPlayer
@@ -354,6 +360,9 @@ fun PlayerScreen(
                     onNavigateBack()
                 },
                 onTogglePlayPause = viewModel::togglePlayPause,
+                onPreviousVideo = viewModel::playPreviousVideo,
+                onNextVideo = viewModel::playNextVideo,
+                onResetZoom = viewModel::resetZoom,
                 onSeekTo = viewModel::seekTo,
                 onSeekBy = { delta -> viewModel.seekBy(delta, showHud = true) },
                 onCycleDecoder = { viewModel.switchDecoderMode(state.decoderMode.next()) },

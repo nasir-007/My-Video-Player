@@ -221,4 +221,99 @@ class KinoXUnitAndUiTest {
         composeTestRule.onNodeWithTag("reset_settings_button").performScrollTo().performClick()
         composeTestRule.onNodeWithTag("clear_history_button").performScrollTo().assertIsDisplayed()
     }
+
+    @Test
+    fun playerHolderPlaylistNavigatesPreviousAndNextVideos() {
+        val queue = listOf(
+            com.example.data.model.VideoItem(
+                uriString = "content://media/video1.mp4",
+                title = "Episode 1.mp4"
+            ),
+            com.example.data.model.VideoItem(
+                uriString = "content://media/video2.mp4",
+                title = "Episode 2.mp4"
+            ),
+            com.example.data.model.VideoItem(
+                uriString = "content://media/video3.mp4",
+                title = "Episode 3.mp4"
+            )
+        )
+        KinoXPlayerHolder.setPlaylist(queue, activeUriString = "content://media/video1.mp4")
+
+        val initial = KinoXPlayerHolder.playlist.value
+        assertEquals(0, initial.currentIndex)
+        assertFalse(initial.hasPrevious)
+        assertTrue(initial.hasNext)
+        assertEquals("Episode 2.mp4", initial.nextTitle)
+
+        val second = KinoXPlayerHolder.stepPlaylist(1)
+        assertEquals("Episode 2.mp4", second?.title)
+        assertTrue(KinoXPlayerHolder.playlist.value.hasPrevious)
+        assertTrue(KinoXPlayerHolder.playlist.value.hasNext)
+
+        val third = KinoXPlayerHolder.stepPlaylist(1)
+        assertEquals("Episode 3.mp4", third?.title)
+        assertTrue(KinoXPlayerHolder.playlist.value.hasPrevious)
+        assertFalse(KinoXPlayerHolder.playlist.value.hasNext)
+
+        val backToSecond = KinoXPlayerHolder.stepPlaylist(-1)
+        assertEquals("Episode 2.mp4", backToSecond?.title)
+    }
+
+    @Test
+    fun playerHudShowsNextPreviousAndZoomResetControls() {
+        var nextClicks = 0
+        var prevClicks = 0
+        var resetClicks = 0
+        val state = com.example.ui.player.PlayerUiState(
+            uriString = "content://media/video2.mp4",
+            title = "Episode 2.mp4",
+            positionMs = 60_000L,
+            durationMs = 180_000L,
+            controlsVisible = true,
+            hasPreviousVideo = true,
+            hasNextVideo = true,
+            nextVideoTitle = "Episode 3.mp4",
+            zoomScale = 2.0f
+        )
+
+        composeTestRule.setContent {
+            KinoXTheme {
+                com.example.ui.player.PlayerHudOverlays(
+                    state = state,
+                    pipSupported = false,
+                    onBack = {},
+                    onTogglePlayPause = {},
+                    onPreviousVideo = { prevClicks++ },
+                    onNextVideo = { nextClicks++ },
+                    onResetZoom = { resetClicks++ },
+                    onSeekTo = {},
+                    onSeekBy = {},
+                    onCycleDecoder = {},
+                    onToggleBackgroundPlay = {},
+                    onOpenSubtitles = {},
+                    onOpenAudioSpeed = {},
+                    onOpenDecoderInfo = {},
+                    onOpenSleepTimer = {},
+                    onEnterPip = {},
+                    onToggleLock = {},
+                    onCycleAspectRatio = {},
+                    onCycleOrientation = {},
+                    onRetry = {},
+                    onSwitchToSw = {}
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("player_previous_button").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithTag("player_next_button").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithTag("player_up_next_pill").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithTag("player_reset_zoom_button").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithTag("player_duration_toggle").assertIsDisplayed().performClick()
+        composeTestRule.onNodeWithText("-02:00").assertIsDisplayed()
+
+        assertEquals(1, prevClicks)
+        assertEquals(2, nextClicks)
+        assertEquals(1, resetClicks)
+    }
 }

@@ -20,6 +20,7 @@ import com.example.data.model.SubtitleStylePrefs
 import com.example.data.model.VideoItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 
@@ -76,6 +77,15 @@ class MediaRepository(
 
     suspend fun getVideoHistoryByUri(uriString: String): VideoItem? =
         dao.getVideoHistory(uriString)?.toModel()
+
+    suspend fun getAllHistoryVideos(): List<VideoItem> = videoHistory.first()
+
+    suspend fun scanAllPinnedFoldersVideos(): List<VideoItem> = withContext(Dispatchers.IO) {
+        val folders = pinnedFolders.first()
+        folders.flatMap { folder -> scanFolderVideos(folder.treeUriString) }
+            .distinctBy { it.uriString }
+            .sortedBy { it.title.lowercase() }
+    }
 
     suspend fun saveVideoProgress(
         uriString: String,
@@ -146,7 +156,7 @@ class MediaRepository(
     suspend fun scanFolderVideos(treeUriString: String): List<VideoItem> = withContext(Dispatchers.IO) {
         val treeUri = Uri.parse(treeUriString)
         val rootDoc = DocumentFile.fromTreeUri(context, treeUri) ?: return@withContext emptyList()
-        val files = collectFilesRecursively(rootDoc, maxDepth = 2)
+        val files = collectFilesRecursively(rootDoc, maxDepth = 6)
         val subtitleFilesByBaseName = files
             .filter { file ->
                 val name = file.name?.lowercase() ?: ""
@@ -250,9 +260,12 @@ class MediaRepository(
         item
     }
 
+    suspend fun registerPickedVideos(uris: List<Uri>): List<VideoItem> =
+        uris.mapNotNull { uri -> runCatching { registerPickedVideo(uri) }.getOrNull() }
+
     private fun countVideosInDocumentTree(rootDoc: DocumentFile?): Int {
         if (rootDoc == null || !rootDoc.exists()) return 0
-        return collectFilesRecursively(rootDoc, maxDepth = 2).count { isVideoFile(it) }
+        return collectFilesRecursively(rootDoc, maxDepth = 6).count { isVideoFile(it) }
     }
 
     private fun collectFilesRecursively(dir: DocumentFile, maxDepth: Int, depth: Int = 0): List<DocumentFile> {
@@ -334,7 +347,8 @@ class MediaRepository(
     companion object {
         private val VIDEO_EXTENSIONS = listOf(
             ".mp4", ".mkv", ".webm", ".avi", ".mov", ".m4v",
-            ".ts", ".mts", ".m2ts", ".3gp", ".flv", ".mpg", ".mpeg"
+            ".ts", ".mts", ".m2ts", ".3gp", ".flv", ".mpg", ".mpeg",
+            ".vob", ".ogv", ".divx"
         )
     }
 }
